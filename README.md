@@ -1,5 +1,7 @@
 # BT: Satellite-Link Rainfall Retrieval and Forecasting
 
+[English](README.md) | [中文](README_CN.md)
+
 This repository contains project-specific code and documentation for rainfall retrieval and forecasting from LEO satellite-link observations, ground weather data, camera-derived weather cues, and time-series forecasting models.
 
 The repository is a lightweight code backup. Raw data, database snapshots, model weights, checkpoints, logs, and third-party reproduced repositories are intentionally excluded.
@@ -59,4 +61,3 @@ Shareable datasets or model artifacts should be stored separately, for example i
 - [Stage1 README](Stage1/README.md)
 - [Stage1.5 README](Stage1.5/README.md)
 - [Methodology draft](docs/methodology.md)
-
