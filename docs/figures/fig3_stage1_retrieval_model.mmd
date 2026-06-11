@@ -1,0 +1,15 @@
+flowchart TB
+  X["Pass sequence X<br/>B x T x C"] --> PAD["Padding mask<br/>max_seq_len"]
+  X --> PATCH["Patch embedding<br/>patch_len P, stride S"]
+  SAT["Satellite ID"] --> SEMB["Satellite embedding"]
+  PATCH --> ADD["Add satellite embedding<br/>+ sinusoidal position"]
+  SEMB --> ADD
+  ADD --> ENC["Transformer encoder layers<br/>temporal self-attention"]
+  X --> SUM["Summary token<br/>mean/std/min/max/range/slope"]
+  ENC --> CAT["Concat summary + patch tokens"]
+  SUM --> CAT
+  Q["Learnable target queries"] --> DEC["Transformer decoder<br/>self-attn + cross-attn"]
+  CAT --> DEC
+  DEC --> RHEAD["Rainfall head<br/>Softplus mm"]
+  DEC --> CHEAD["Rain/no-rain classifier"]
+  DEC --> AHEAD["Auxiliary heads<br/>rain_rate_mean/max, rainy_ratio"]

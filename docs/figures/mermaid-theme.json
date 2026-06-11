@@ -1,0 +1,16 @@
+{
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Inter, Helvetica, Arial, sans-serif",
+    "fontSize": "16px",
+    "primaryColor": "#eef4ff",
+    "primaryTextColor": "#172033",
+    "primaryBorderColor": "#3b6ea8",
+    "lineColor": "#52606d",
+    "secondaryColor": "#f3f7f3",
+    "tertiaryColor": "#fff7e6",
+    "clusterBkg": "#f8fafc",
+    "clusterBorder": "#9aa8b8",
+    "edgeLabelBackground": "#ffffff"
+  }
+}

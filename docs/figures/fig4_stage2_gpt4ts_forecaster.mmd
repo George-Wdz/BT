@@ -1,0 +1,10 @@
+flowchart TB
+  Z["Regular weather table<br/>B x L x M"] --> NORM["Instance normalization<br/>mean/std per sample"]
+  NORM --> VAR["Variable-independent reshape<br/>B*M x L"]
+  VAR --> TPATCH["Temporal patching<br/>patch_size, stride"]
+  TPATCH --> IN["Linear patch projection<br/>patch -> d_model"]
+  IN --> GPT["Truncated GPT-2 blocks<br/>gpt_layers"]
+  GPT --> FLAT["Flatten patch states"]
+  FLAT --> OUT["Linear horizon head<br/>pred_len"]
+  OUT --> DENORM["De-normalization"]
+  DENORM --> YF["Future rainfall / multivariate forecast"]

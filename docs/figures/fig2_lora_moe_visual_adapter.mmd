@@ -1,0 +1,10 @@
+flowchart TB
+  IMG["Input image<br/>RGB, resized/normalized"] --> ENC["Frozen WeatherClassifier encoder<br/>feature vector h_v"]
+  ENC --> PROJ["MLP projector<br/>LayerNorm -> Linear -> GELU -> Linear"]
+  PROJ --> TOK["K visual soft tokens<br/>V in R^{K x d_llm}"]
+  TXT["Instruction prompt"] --> EMB["Text token embeddings"]
+  TOK --> CAT["Concatenate visual + text tokens"]
+  EMB --> CAT
+  CAT --> QWEN["Qwen2.5-14B-Instruct<br/>base frozen"]
+  LORA["vision_weather LoRA<br/>q_proj, v_proj"] -.adapter.-> QWEN
+  QWEN --> ANS["Weather answer / probabilities<br/>sunny, cloudy, rain"]

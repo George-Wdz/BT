@@ -1,0 +1,103 @@
+# Stage1: Pass-based Patch Encoder-Decoder Transformer
+# 星地链路数据 → 气象参数反演（每次过境一个样本）
+
+data:
+  db_path: "/home/wdz/satellite_data/satellite_data.db"
+  pass_dataset_path: "/home/wdz/BT/Stage1/model/data/pass_dataset_link4_img_latest.npz"
+  data_split: [0.7, 0.2, 0.1]     # train/val/test 比例（按 pass 起始时间排序后顺序切）
+  val_strategy: "stratified_before_test"  # test 保持最后时间段；train/val 在 test 前按雨/无雨分层
+  num_workers: 4
+  strict_source_filters: false     # false: 信任采集端清洗；true: 训练端重复过滤无效源数据
+  rain_filter_min: 0.0             # >0 时只保留 pass_rainfall_mm 大于该阈值的 pass
+  satellite_filter_ids: []         # 非空时只保留指定 satelliteId，例如 [1558] 或 [264,272]
+
+checkpoints: "/home/wdz/BT/Stage1/model/checkpoints_stage1_rain_retrieval/"
+
+features:
+  link:  # phy_data
+    - phyRssi
+    - rssi
+    - snr
+    - lastCniValue
+  position:  # 卫星 + 地面终端经纬度海拔
+    - longitude
+    - latitude
+    - satAltitude
+    - posLongitude
+    - posLatitude
+    - altitude
+  ground_weather:  # weather_data
+    - temperature
+    - humidity
+    - pressure
+
+image_weather:
+  enabled: true
+  csv_path: "/home/wdz/BT/Stage1/data/camera_labels/latest_weather_labels_slim.csv"
+  tolerance: "10min"
+
+dry_baseline:
+  enabled: true
+  rain_threshold: 1e-6
+  method: "mean"              # mean: 同卫星训练集无雨均值；matched: 同卫星内按过境时间和 position 匹配最近无雨 pass
+  add_summary: false          # true 时附加 dry delta 的 mean/std/min/max/range/slope 统计值
+  exclude_instant_rain: true   # 构建 dry baseline 时排除 rain_rate_max>阈值的短时雨 pass
+  exclude_image_rain: true     # 构建 dry baseline 时排除视觉模型认为下雨的 pass
+  image_rain_prob_threshold: 0.5
+  time_scale_hours: 72.0      # matched 中时间距离的归一化尺度
+  time_weight: 1.0
+  position_weight: 1.0
+
+targets:
+  primary:
+    - pass_rainfall_mm  # 主任务：过境窗口累计降雨差分(mm)
+  auxiliary:
+    - rain_rate_mean # 辅助任务：过境窗口内瞬时雨量均值
+    - rain_rate_max  # 辅助任务：过境窗口内瞬时雨量最大值
+    - rainy_ratio    # 辅助任务：过境窗口内瞬时有雨比例
+
+model:
+  input_dim: 21          # link(4) + position(6) + ground_weather(3) + image_weather(4) + dry_delta(4)
+  max_seq_len: 256       # 单次过境最大长度，超过截断；不足 padding
+  patch_len: 8           # 每个patch包含的时间步数（过境短，patch_len小一些）
+  stride: 4              # patch滑动步长（50%重叠）
+  d_model: 256
+  n_heads: 8
+  e_layers: 3            # Encoder层数
+  d_layers: 2            # Decoder层数
+  d_ff: 512
+  dropout: 0.1
+  num_satellites: 200    # embedding表大小（索引0=未知卫星，其余给已知ID）
+  sat_emb_dim: 16        # satellite embedding 维度
+
+  # Channel Attention 消融开关
+  # false: channel-mixing（默认，前期数据少时使用）
+  # true:  two-stage attention（先时间attn，后通道attn，数据多时启用）
+  use_channel_attention: false
+  feature_group_dims: [4, 6, 3, 4, 4]  # link / position / ground_weather / image_weather / dry_delta
+  nonnegative_rainfall: true
+  use_summary_token: true
+
+training:
+  seed: 42
+  iterations: 3              # 多次实验取均值/方差
+  batch_size: 32
+  epochs: 100
+  lr: 1e-4
+  weight_decay: 1e-5
+  warmup_epochs: 5
+  patience: 15               # early stopping 容忍轮次
+  rainfall_loss_weight: 2.0  # 主任务权重加大
+  rain_threshold: 1e-6
+  rainy_loss_weight: 20.0
+  rain_classification_loss_weight: 0.5
+  rain_classification_pos_weight: 20.0
+  auxiliary_loss_weight: 0.3
+  use_rainy_sampler: true
+  rainy_sample_weight: 20.0
+  grad_clip: 1.0
+  # 学习率调度：use_cosine=true 用 CosineAnnealing，否则用 lradj 阶梯式
+  use_cosine: true
+  tmax: 20                   # cosine annealing T_max
+  lradj: "type1"             # type1/type2/type4，仅 use_cosine=false 时生效
+  decay_fac: 0.9             # lradj 衰减因子

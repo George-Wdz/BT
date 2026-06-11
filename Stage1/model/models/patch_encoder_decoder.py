@@ -1,0 +1,394 @@
+"""
+Patch-based Encoder-Decoder Transformer (Pass-based 版本)
+
+每个样本是一个卫星过境片段（pass），关键变化：
+- 加入 Satellite Embedding（含未知卫星槽位用于冷启动）
+- 支持 attention mask 处理 padding
+- 整段过境输出标签（pass_rainfall_mm, wind_speed, wind_direction）
+- 可消融的 Channel Attention（two-stage：先时间attn，后通道attn）
+"""
+import math
+import torch
+import torch.nn as nn
+
+
+class PatchEmbedding(nn.Module):
+    """Channel-mixing patching：全部特征拼接后投影到 d_model。"""
+
+    def __init__(self, input_dim: int, patch_len: int, stride: int, d_model: int):
+        super().__init__()
+        self.patch_len = patch_len
+        self.stride = stride
+        self.proj = nn.Linear(input_dim * patch_len, d_model)
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x, mask=None):
+        # x: (B, T, C), mask: (B, T) bool
+        B, T, C = x.shape
+        x_p = x.unfold(1, self.patch_len, self.stride)   # (B, N, C, P)
+        x_p = x_p.permute(0, 1, 3, 2).contiguous()       # (B, N, P, C)
+        N = x_p.shape[1]
+        x_p = x_p.reshape(B, N, -1)
+        x_p = self.norm(self.proj(x_p))
+
+        if mask is not None:
+            m_p = mask.unfold(1, self.patch_len, self.stride)  # (B, N, P)
+            patch_mask = m_p.any(dim=-1)
+        else:
+            patch_mask = torch.ones(B, N, dtype=torch.bool, device=x.device)
+        return x_p, patch_mask
+
+
+class GroupedPatchEmbedding(nn.Module):
+    """
+    分组 patching：每个特征组（link/position/weather）独立 embedding。
+    输出 (B, N, G, d_model)，G = 特征组数。
+    """
+
+    def __init__(self, group_dims: list, patch_len: int, stride: int, d_model: int):
+        super().__init__()
+        self.group_dims = group_dims  # e.g. [4, 6, 3]
+        self.patch_len = patch_len
+        self.stride = stride
+        self.projs = nn.ModuleList([
+            nn.Linear(g * patch_len, d_model) for g in group_dims
+        ])
+        self.norms = nn.ModuleList([
+            nn.LayerNorm(d_model) for _ in group_dims
+        ])
+
+    def forward(self, x, mask=None):
+        # x: (B, T, sum(group_dims))
+        B, T, _ = x.shape
+        # 切分通道
+        chunks = torch.split(x, self.group_dims, dim=-1)
+        group_tokens = []
+        for chunk, proj, norm in zip(chunks, self.projs, self.norms):
+            # chunk: (B, T, g)
+            x_p = chunk.unfold(1, self.patch_len, self.stride)  # (B, N, g, P)
+            x_p = x_p.permute(0, 1, 3, 2).contiguous()          # (B, N, P, g)
+            N = x_p.shape[1]
+            x_p = x_p.reshape(B, N, -1)                         # (B, N, P*g)
+            x_p = norm(proj(x_p))                               # (B, N, d)
+            group_tokens.append(x_p)
+        # 堆叠为 (B, N, G, d)
+        out = torch.stack(group_tokens, dim=2)
+
+        if mask is not None:
+            m_p = mask.unfold(1, self.patch_len, self.stride)
+            patch_mask = m_p.any(dim=-1)  # (B, N)
+        else:
+            patch_mask = torch.ones(B, out.size(1), dtype=torch.bool, device=x.device)
+        return out, patch_mask
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, max_len: int = 512, dropout: float = 0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float()
+                             * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("pe", pe.unsqueeze(0))
+
+    def forward(self, x):
+        return self.dropout(x + self.pe[:, :x.size(1)])
+
+
+class SummaryEmbedding(nn.Module):
+    """Pass-level statistics token for weak rain attenuation signals."""
+
+    def __init__(self, input_dim: int, d_model: int):
+        super().__init__()
+        self.proj = nn.Sequential(
+            nn.Linear(input_dim * 6, d_model),
+            nn.LayerNorm(d_model),
+            nn.GELU(),
+            nn.Linear(d_model, d_model),
+            nn.LayerNorm(d_model),
+        )
+
+    def forward(self, x, mask):
+        # x: (B, T, C), mask: (B, T)
+        valid = mask.unsqueeze(-1).to(dtype=x.dtype)
+        count = valid.sum(dim=1).clamp_min(1.0)
+        x_masked = x * valid
+        mean = x_masked.sum(dim=1) / count
+        centered = (x - mean.unsqueeze(1)) * valid
+        std = torch.sqrt((centered.square().sum(dim=1) / count).clamp_min(1e-6))
+        x_min = x.masked_fill(~mask.unsqueeze(-1), float("inf")).amin(dim=1)
+        x_max = x.masked_fill(~mask.unsqueeze(-1), float("-inf")).amax(dim=1)
+        x_min = torch.where(torch.isfinite(x_min), x_min, mean)
+        x_max = torch.where(torch.isfinite(x_max), x_max, mean)
+        x_range = x_max - x_min
+        lengths = mask.long().sum(dim=1).clamp_min(1)
+        first = x[:, 0]
+        last_idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, x.size(-1))
+        last = x.gather(1, last_idx).squeeze(1)
+        slope = (last - first) / lengths.sub(1).clamp_min(1).unsqueeze(-1).to(x.dtype)
+        stats = torch.cat([mean, std, x_min, x_max, x_range, slope], dim=-1)
+        return self.proj(stats).unsqueeze(1)
+
+
+class EncoderLayer(nn.Module):
+    """标准 Encoder 层：仅时间维 self-attention"""
+
+    def __init__(self, d_model, n_heads, d_ff, dropout=0.1):
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, n_heads,
+                                               dropout=dropout, batch_first=True)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_ff), nn.GELU(),
+            nn.Dropout(dropout), nn.Linear(d_ff, d_model),
+        )
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x, key_padding_mask=None):
+        h = self.norm1(x)
+        a, _ = self.self_attn(h, h, h, key_padding_mask=key_padding_mask)
+        x = x + self.drop(a)
+        x = x + self.drop(self.ffn(self.norm2(x)))
+        return x
+
+
+class TwoStageEncoderLayer(nn.Module):
+    """
+    Two-stage Encoder 层：先时间维 attention，后通道维 attention。
+
+    输入: (B, N, G, d)  N=patches, G=channel groups
+    - Stage 1 (Time): 对每个 group 独立做 patch 间 attention
+    - Stage 2 (Channel): 对每个 patch 位置独立做 group 间 attention
+    """
+
+    def __init__(self, d_model, n_heads, d_ff, dropout=0.1):
+        super().__init__()
+        self.time_attn = nn.MultiheadAttention(d_model, n_heads,
+                                               dropout=dropout, batch_first=True)
+        self.channel_attn = nn.MultiheadAttention(d_model, n_heads,
+                                                  dropout=dropout, batch_first=True)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_ff), nn.GELU(),
+            nn.Dropout(dropout), nn.Linear(d_ff, d_model),
+        )
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.norm3 = nn.LayerNorm(d_model)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x, key_padding_mask=None):
+        # x: (B, N, G, d), key_padding_mask: (B, N)
+        B, N, G, D = x.shape
+
+        # Stage 1: 时间维 attention，每个group独立
+        # reshape: (B, N, G, d) → (B*G, N, d)
+        h = self.norm1(x).permute(0, 2, 1, 3).reshape(B * G, N, D)
+        # 每个group共享同样的patch_mask，重复G次
+        if key_padding_mask is not None:
+            time_mask = key_padding_mask.unsqueeze(1).expand(-1, G, -1).reshape(B * G, N)
+        else:
+            time_mask = None
+        a, _ = self.time_attn(h, h, h, key_padding_mask=time_mask)
+        a = a.reshape(B, G, N, D).permute(0, 2, 1, 3)  # (B, N, G, d)
+        x = x + self.drop(a)
+
+        # Stage 2: 通道维 attention，每个patch位置独立
+        # reshape: (B, N, G, d) → (B*N, G, d)
+        h = self.norm2(x).reshape(B * N, G, D)
+        c, _ = self.channel_attn(h, h, h)  # 通道间无需padding mask
+        c = c.reshape(B, N, G, D)
+        x = x + self.drop(c)
+
+        # FFN
+        x = x + self.drop(self.ffn(self.norm3(x)))
+        return x
+
+
+class DecoderLayer(nn.Module):
+    def __init__(self, d_model, n_heads, d_ff, dropout=0.1):
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, n_heads,
+                                               dropout=dropout, batch_first=True)
+        self.cross_attn = nn.MultiheadAttention(d_model, n_heads,
+                                                dropout=dropout, batch_first=True)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_ff), nn.GELU(),
+            nn.Dropout(dropout), nn.Linear(d_ff, d_model),
+        )
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.norm3 = nn.LayerNorm(d_model)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x, enc_out, enc_padding_mask=None):
+        h = self.norm1(x)
+        a, _ = self.self_attn(h, h, h)
+        x = x + self.drop(a)
+        h = self.norm2(x)
+        c, _ = self.cross_attn(h, enc_out, enc_out,
+                               key_padding_mask=enc_padding_mask)
+        x = x + self.drop(c)
+        x = x + self.drop(self.ffn(self.norm3(x)))
+        return x
+
+
+class PatchEncoderDecoder(nn.Module):
+    """
+    Pass-based Patch Encoder-Decoder Transformer.
+
+    支持两种 Encoder 模式：
+    - Channel-mixing（默认）：13维特征拼接做patch embedding
+    - Two-stage attention（可选）：分组patch embedding + 时间attn + 通道attn
+
+    通过 cfg.model.use_channel_attention 切换，便于消融对比。
+    """
+
+    def __init__(self, cfg: dict):
+        super().__init__()
+        mc = cfg["model"]
+        input_dim = mc["input_dim"]
+        patch_len = mc["patch_len"]
+        stride = mc["stride"]
+        d_model = mc["d_model"]
+        n_heads = mc["n_heads"]
+        d_ff = mc["d_ff"]
+        dropout = mc["dropout"]
+        e_layers = mc["e_layers"]
+        d_layers = mc["d_layers"]
+        num_satellites = mc["num_satellites"]
+        sat_emb_dim = mc.get("sat_emb_dim", 16)
+
+        self.use_channel_attn = mc.get("use_channel_attention", False)
+        self.use_summary_token = mc.get("use_summary_token", True)
+        self.feature_group_dims = mc.get("feature_group_dims", [6, 6, 3])
+        assert sum(self.feature_group_dims) == input_dim, \
+            f"feature_group_dims sum {sum(self.feature_group_dims)} != input_dim {input_dim}"
+
+        n_targets = (len(cfg["targets"]["primary"])
+                     + len(cfg["targets"].get("auxiliary", [])))
+
+        self.patch_len = patch_len
+        self.stride = stride
+        self.n_targets = n_targets
+
+        # Satellite Embedding：索引0=未知卫星
+        self.sat_embedding = nn.Embedding(num_satellites, sat_emb_dim)
+        self.sat_proj = nn.Linear(sat_emb_dim, d_model)
+
+        # Encoder（根据消融开关选择）
+        if self.use_channel_attn:
+            self.enc_patch_embed = GroupedPatchEmbedding(
+                self.feature_group_dims, patch_len, stride, d_model
+            )
+            self.encoder_layers = nn.ModuleList([
+                TwoStageEncoderLayer(d_model, n_heads, d_ff, dropout)
+                for _ in range(e_layers)
+            ])
+            # 通道融合：将 (B, N, G, d) 聚合为 (B, N, d) 供 decoder cross-attn 使用
+            self.channel_fuse = nn.Linear(len(self.feature_group_dims) * d_model, d_model)
+        else:
+            self.enc_patch_embed = PatchEmbedding(input_dim, patch_len, stride, d_model)
+            self.encoder_layers = nn.ModuleList([
+                EncoderLayer(d_model, n_heads, d_ff, dropout) for _ in range(e_layers)
+            ])
+            self.channel_fuse = None
+
+        self.enc_pos = PositionalEncoding(d_model, dropout=dropout)
+        self.enc_norm = nn.LayerNorm(d_model)
+        self.summary_embed = (
+            SummaryEmbedding(input_dim, d_model) if self.use_summary_token else None
+        )
+
+        # Decoder：n_targets 个可学习 query token
+        self.target_queries = nn.Parameter(torch.randn(n_targets, d_model) * 0.02)
+        self.decoder_layers = nn.ModuleList([
+            DecoderLayer(d_model, n_heads, d_ff, dropout) for _ in range(d_layers)
+        ])
+        self.dec_norm = nn.LayerNorm(d_model)
+
+        # 输出头：雨量直接输出物理空间的非负 mm 值。
+        self.rainfall_head = nn.Linear(d_model, 1)
+        self.rain_cls_head = nn.Linear(d_model, 1)
+        self.aux_head = nn.Linear(d_model, n_targets - 1) if n_targets > 1 else None
+        self.nonnegative_rainfall = mc.get("nonnegative_rainfall", True)
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+    def forward(self, features, mask, satellite_idx):
+        """
+        features: (B, T, input_dim)
+        mask: (B, T) bool  True=真实数据, False=padding
+        satellite_idx: (B,) long
+        """
+        B = features.size(0)
+        sat_emb = self.sat_proj(self.sat_embedding(satellite_idx))  # (B, d)
+
+        if self.use_channel_attn:
+            # Two-stage 模式
+            enc_in, patch_mask = self.enc_patch_embed(features, mask)  # (B, N, G, d)
+            # 加 satellite embedding（广播到所有 patch 和 group）
+            enc_in = enc_in + sat_emb.unsqueeze(1).unsqueeze(1)
+            # 加位置编码（在时间维上）：先 reshape 到 (B*G, N, d) 加完再 reshape 回去
+            B_, N, G, D = enc_in.shape
+            enc_in_t = enc_in.permute(0, 2, 1, 3).reshape(B_ * G, N, D)
+            enc_in_t = self.enc_pos(enc_in_t)
+            enc_in = enc_in_t.reshape(B_, G, N, D).permute(0, 2, 1, 3)
+
+            enc_pad_mask = ~patch_mask
+            enc_out = enc_in
+            for layer in self.encoder_layers:
+                enc_out = layer(enc_out, key_padding_mask=enc_pad_mask)
+            # 通道融合: (B, N, G, d) → (B, N, d)
+            enc_out = enc_out.reshape(B, N, G * D)
+            enc_out = self.channel_fuse(enc_out)
+            enc_out = self.enc_norm(enc_out)
+        else:
+            # Channel-mixing 模式
+            enc_in, patch_mask = self.enc_patch_embed(features, mask)  # (B, N, d)
+            enc_in = enc_in + sat_emb.unsqueeze(1)
+            enc_in = self.enc_pos(enc_in)
+            enc_pad_mask = ~patch_mask
+            enc_out = enc_in
+            for layer in self.encoder_layers:
+                enc_out = layer(enc_out, key_padding_mask=enc_pad_mask)
+            enc_out = self.enc_norm(enc_out)
+
+        if self.use_summary_token:
+            summary = self.summary_embed(features, mask)
+            enc_out = torch.cat([summary, enc_out], dim=1)
+            enc_pad_mask = torch.cat(
+                [
+                    torch.zeros(B, 1, dtype=torch.bool, device=enc_pad_mask.device),
+                    enc_pad_mask,
+                ],
+                dim=1,
+            )
+
+        # Decoder
+        dec_in = self.target_queries.unsqueeze(0).expand(B, -1, -1)
+        dec_out = dec_in
+        for layer in self.decoder_layers:
+            dec_out = layer(dec_out, enc_out, enc_padding_mask=enc_pad_mask)
+        dec_out = self.dec_norm(dec_out)
+
+        # 输出头
+        rain_repr = dec_out[:, 0]
+        rainfall = self.rainfall_head(rain_repr)
+        if self.nonnegative_rainfall:
+            rainfall = torch.nn.functional.softplus(rainfall)
+        rain_logit = self.rain_cls_head(rain_repr).squeeze(-1)
+        if self.aux_head is not None:
+            aux_input = dec_out[:, 1:].mean(dim=1)
+            auxiliary = self.aux_head(aux_input)
+        else:
+            auxiliary = None
+        return rainfall, auxiliary, rain_logit

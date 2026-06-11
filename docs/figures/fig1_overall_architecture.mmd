@@ -1,0 +1,49 @@
+flowchart LR
+  subgraph S0["Data Sources"]
+    PHY["Satellite link telemetry<br/>phyRssi, rssi, snr, CNI"]
+    POS["Satellite/terminal position<br/>lon, lat, altitude"]
+    GW["Ground weather<br/>temperature, humidity, pressure"]
+    WS["Weather station<br/>rainfall, cumulative rainfall"]
+    IMG["Camera images"]
+  end
+
+  subgraph M0["LoRA-MoE Visual Weather Adapter"]
+    VE["Frozen weather vision encoder"]
+    PRJ["Trainable soft-token projector"]
+    LLM["Qwen + weather LoRA"]
+    VLAB["image weather probabilities<br/>sunny/cloudy/rain"]
+    VE --> PRJ --> LLM --> VLAB
+  end
+
+  subgraph S1["Stage 1: Pass-Level Rainfall Retrieval"]
+    PASS["Pass segmentation<br/>same satellite, gap < 60 s"]
+    ALIGN["Timestamp alignment<br/>position 5 s, weather 60 s, image 10 min"]
+    DBLD["Pass dataset NPZ<br/>irregular sequence"]
+    RET["Patch Encoder-Decoder Transformer"]
+    YPASS["pass_rainfall_mm<br/>rain_rate aux, rain class"]
+    PASS --> ALIGN --> DBLD --> RET --> YPASS
+  end
+
+  subgraph S15["Stage 1.5: Structured Bridge"]
+    BUCKET["Regular buckets<br/>e.g. 10 min"]
+    AGG["Aggregate pass outputs<br/>sum/mean/max/count"]
+    TABLE["Stage2 weather table<br/>date, weather, stage1 features, target"]
+    BUCKET --> AGG --> TABLE
+  end
+
+  subgraph S2["Stage 2: Long-Term Forecasting"]
+    PATCH["Time-series patching"]
+    GPT["Frozen/partially frozen GPT-2 blocks"]
+    OUT["Future rainfall forecast"]
+    PATCH --> GPT --> OUT
+  end
+
+  PHY --> PASS
+  POS --> ALIGN
+  GW --> ALIGN
+  WS --> ALIGN
+  IMG --> VE
+  VLAB --> ALIGN
+  YPASS --> AGG
+  WS --> BUCKET
+  TABLE --> PATCH

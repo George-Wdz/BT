@@ -1,0 +1,34 @@
+model_dir: /home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct
+split_root: /home/wdz/LLaMA-Factory/leo_model/data/vision_weather/split
+vision_weights: /home/wdz/LLaMA-Factory/leo_model/vision/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt
+output_dir: /home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_v1
+
+class_names:
+  - sunny
+  - cloudy
+  - rain
+
+label_zh:
+  sunny: 晴天
+  cloudy: 多云
+  rain: 下雨
+
+training:
+  dtype: bfloat16
+  device_map: auto
+  batch_size: 1
+  grad_accum_steps: 16
+  epochs: 1
+  learning_rate: 0.0002
+  weight_decay: 0.0
+  num_visual_tokens: 8
+  projector_hidden_dim: 1024
+  max_train_samples: 0
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - v_proj

@@ -1,0 +1,76 @@
+# Local/editor state
+.DS_Store
+.idea/
+.vscode/
+.claude/
+.agents/
+.codex/
+__pycache__/
+*.py[cod]
+*.swp
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.pem
+*.token
+
+# Databases and backups
+*.db
+*.sqlite
+*.sqlite3
+db_backups/
+
+# Raw/intermediate datasets
+*.csv
+*.npz
+*.parquet
+*.xlsx
+Stage1/data/
+Stage1/model/data/datasets/
+Stage2/GPT4TS/Long-term_Forecasting/datasets/
+
+# Images and media
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+
+# Model weights, checkpoints, and adapters
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+checkpoint*/
+checkpoints*/
+Stage1/model/checkpoints*/
+Stage2/GPT4TS/Long-term_Forecasting/checkpoints/
+MoE/models/
+MoE/lora-moe/outputs/
+
+# Logs, experiment outputs, and generated caches
+*.log
+logs/
+Stage1/logs/
+Stage1/model/logs/
+MoE/lora-moe/logs/
+Stage1/analysis/**/runs/
+Stage1/analysis/**/legacy_*/
+Stage1/paper/
+Stage1/paper/figures/
+wandb/
+tensorboard/
+runs/
+
+# Local tools and downloaded dependencies
+.tools/
+node_modules/
+gpt2.zip
+Stage2/GPT4TS/Long-term_Forecasting/gpt2/.cache/
+
+# External repositories kept locally
+Stage2/GPT4TS/
+MoE/llama-moe/
