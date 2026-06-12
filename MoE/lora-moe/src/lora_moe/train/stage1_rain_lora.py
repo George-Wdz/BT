@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import zlib
 from pathlib import Path
 
 import torch
@@ -11,7 +12,12 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lora_moe.components import FeatureToSoftPromptProjector, FrozenStage1RainEncoder
-from lora_moe.datasets import Stage1RainInstructionDataset, stage1_rain_collate
+from lora_moe.datasets import (
+    Stage1RainInstructionDataset,
+    build_stage1_metadata_prompt,
+    build_stage1_rain_answer,
+    stage1_rain_collate,
+)
 from lora_moe.train.vision_weather_lora import dtype_from_name, first_parameter_device, tokenize_no_special
 
 
@@ -49,21 +55,74 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora-alpha", type=int, default=16)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--lora-target-modules", default="q_proj,v_proj")
+    parser.add_argument("--no-rain-threshold", type=float, default=0.06)
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
-def build_prompt_parts(tokenizer):
-    prefix = (
+def build_system_prompt() -> str:
+    return (
         "<|im_start|>system\n"
-        "你是卫星链路降雨反演助手。请根据 Stage1 反演编码器提供的过境特征，"
-        "用中文给出本次卫星过境的降雨量。回答要简洁，不要提到 token、编码器、LoRA、"
-        "特征向量或模型内部实现。\n"
+        "你是卫星链路降雨反演助手。请根据用户给出的过境元信息和卫星链路反演专家表示，"
+        "用中文给出本次卫星过境的降雨量。回答要包含卫星ID、过境起止时间和反演结论，"
+        "不要提到 token、编码器、LoRA、特征向量或模型内部实现。\n"
         "<|im_end|>\n"
-        "<|im_start|>user\n"
     )
-    suffix = "请给出本次卫星过境的反演降雨量。<|im_end|>\n<|im_start|>assistant\n"
-    return tokenize_no_special(tokenizer, prefix), tokenize_no_special(tokenizer, suffix)
+
+
+def build_prompt_texts(batch: dict) -> tuple[list[str], list[str]]:
+    prefixes = []
+    suffixes = []
+    system_prompt = build_system_prompt()
+    for satellite_id, pass_start, pass_end, points in zip(
+        batch["satellite_id"],
+        batch["pass_start"],
+        batch["pass_end"],
+        batch["points"],
+    ):
+        metadata = build_stage1_metadata_prompt(
+            satellite_id=int(satellite_id),
+            pass_start=str(pass_start),
+            pass_end=str(pass_end),
+            points=int(points),
+        )
+        prefixes.append(f"{system_prompt}<|im_start|>user\n{metadata}\n")
+        suffixes.append("\n请给出本次卫星过境的反演降雨量和简要判断。<|im_end|>\n<|im_start|>assistant\n")
+    return prefixes, suffixes
+
+
+def _template_index(satellite_id: int, pass_start: str, seed: int) -> int:
+    raw = f"{seed}:{satellite_id}:{pass_start}".encode("utf-8")
+    return zlib.crc32(raw)
+
+
+def build_answers_from_stage1_prediction(
+    *,
+    batch: dict,
+    pred_rainfall: torch.Tensor,
+    rain_probability: torch.Tensor,
+    no_rain_threshold: float,
+    seed: int,
+) -> list[str]:
+    pred_values = pred_rainfall.detach().cpu().reshape(-1).tolist()
+    prob_values = rain_probability.detach().cpu().reshape(-1).tolist()
+    answers = []
+    for idx, (satellite_id, pass_start, pass_end, points) in enumerate(
+        zip(batch["satellite_id"], batch["pass_start"], batch["pass_end"], batch["points"])
+    ):
+        answers.append(
+            build_stage1_rain_answer(
+                satellite_id=int(satellite_id),
+                pass_start=str(pass_start),
+                pass_end=str(pass_end),
+                points=int(points),
+                pred_rainfall_mm=float(pred_values[idx]),
+                rain_probability=float(prob_values[idx]),
+                no_rain_threshold=no_rain_threshold,
+                template_idx=_template_index(int(satellite_id), str(pass_start), seed),
+            )
+        )
+    return answers
 
 
 def build_inputs_embeds_and_labels(
@@ -72,18 +131,13 @@ def build_inputs_embeds_and_labels(
     tokenizer,
     projector,
     stage1_features: torch.Tensor,
+    prompt_prefixes: list[str],
+    prompt_suffixes: list[str],
     answers: list[str],
-    prefix_ids: torch.Tensor,
-    suffix_ids: torch.Tensor,
     input_device: torch.device,
 ):
     embedding = model.get_input_embeddings()
     dtype = embedding.weight.dtype
-
-    prefix_ids = prefix_ids.to(input_device)
-    suffix_ids = suffix_ids.to(input_device)
-    prefix_embeds = embedding(prefix_ids).unsqueeze(0)
-    suffix_embeds = embedding(suffix_ids).unsqueeze(0)
 
     stage1_embeds = projector(stage1_features.to(input_device, dtype=next(projector.parameters()).dtype))
     stage1_embeds = stage1_embeds.to(dtype=dtype)
@@ -92,6 +146,10 @@ def build_inputs_embeds_and_labels(
     per_sample_labels = []
     max_len = 0
     for idx, answer in enumerate(answers):
+        prefix_ids = tokenize_no_special(tokenizer, prompt_prefixes[idx]).to(input_device)
+        suffix_ids = tokenize_no_special(tokenizer, prompt_suffixes[idx]).to(input_device)
+        prefix_embeds = embedding(prefix_ids).unsqueeze(0)
+        suffix_embeds = embedding(suffix_ids).unsqueeze(0)
         target_ids = tokenize_no_special(tokenizer, answer + "<|im_end|>").to(input_device)
         target_embeds = embedding(target_ids).unsqueeze(0)
         embeds = torch.cat(
@@ -147,6 +205,7 @@ def save_projector(
             "stage1_checkpoint_dir": args.stage1_checkpoint_dir,
             "pass_dataset_path": args.pass_dataset_path or stage1_encoder.cfg["data"]["pass_dataset_path"],
             "stage1_cfg": stage1_encoder.cfg,
+            "no_rain_threshold": args.no_rain_threshold,
         },
         path,
     )
@@ -183,10 +242,10 @@ def evaluate_loss(
     projector,
     stage1_encoder: FrozenStage1RainEncoder,
     loader: DataLoader,
-    prefix_ids: torch.Tensor,
-    suffix_ids: torch.Tensor,
     input_device: torch.device,
     torch_dtype: torch.dtype,
+    no_rain_threshold: float,
+    seed: int,
 ) -> float:
     model_was_training = model.training
     projector_was_training = projector.training
@@ -200,14 +259,23 @@ def evaluate_loss(
         mask = batch["mask"].to(input_device, dtype=torch.bool, non_blocking=True)
         satellite_idx = batch["satellite_idx"].to(input_device, dtype=torch.long, non_blocking=True)
         encoded = stage1_encoder(features, mask, satellite_idx).to(input_device, dtype=torch_dtype)
+        pred = stage1_encoder.predict(features, mask, satellite_idx)
+        answers = build_answers_from_stage1_prediction(
+            batch=batch,
+            pred_rainfall=pred["rainfall_mm"],
+            rain_probability=pred["rain_probability"],
+            no_rain_threshold=no_rain_threshold,
+            seed=seed,
+        )
+        prompt_prefixes, prompt_suffixes = build_prompt_texts(batch)
         inputs_embeds, attention_mask, labels = build_inputs_embeds_and_labels(
             model=model,
             tokenizer=tokenizer,
             projector=projector,
             stage1_features=encoded,
-            answers=batch["answer"],
-            prefix_ids=prefix_ids,
-            suffix_ids=suffix_ids,
+            prompt_prefixes=prompt_prefixes,
+            prompt_suffixes=prompt_suffixes,
+            answers=answers,
             input_device=input_device,
         )
         outputs = model(inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels)
@@ -311,7 +379,6 @@ def main() -> None:
     trainable_params = [p for p in model.parameters() if p.requires_grad] + list(projector.parameters())
     optimizer = torch.optim.AdamW(trainable_params, lr=args.learning_rate, weight_decay=args.weight_decay)
 
-    prefix_ids, suffix_ids = build_prompt_parts(tokenizer)
     global_step = 0
     running_loss = 0.0
     best_val_loss = None
@@ -327,16 +394,25 @@ def main() -> None:
             satellite_idx = batch["satellite_idx"].to(input_device, dtype=torch.long, non_blocking=True)
             with torch.no_grad():
                 encoded = stage1_encoder(features, mask, satellite_idx)
+                pred = stage1_encoder.predict(features, mask, satellite_idx)
             encoded = encoded.to(input_device, dtype=torch_dtype)
+            answers = build_answers_from_stage1_prediction(
+                batch=batch,
+                pred_rainfall=pred["rainfall_mm"],
+                rain_probability=pred["rain_probability"],
+                no_rain_threshold=args.no_rain_threshold,
+                seed=args.seed,
+            )
+            prompt_prefixes, prompt_suffixes = build_prompt_texts(batch)
 
             inputs_embeds, attention_mask, labels = build_inputs_embeds_and_labels(
                 model=model,
                 tokenizer=tokenizer,
                 projector=projector,
                 stage1_features=encoded,
-                answers=batch["answer"],
-                prefix_ids=prefix_ids,
-                suffix_ids=suffix_ids,
+                prompt_prefixes=prompt_prefixes,
+                prompt_suffixes=prompt_suffixes,
+                answers=answers,
                 input_device=input_device,
             )
             outputs = model(inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels)
@@ -378,10 +454,10 @@ def main() -> None:
                         projector=projector,
                         stage1_encoder=stage1_encoder,
                         loader=val_loader,
-                        prefix_ids=prefix_ids,
-                        suffix_ids=suffix_ids,
                         input_device=input_device,
                         torch_dtype=torch_dtype,
+                        no_rain_threshold=args.no_rain_threshold,
+                        seed=args.seed,
                     )
                     improved = best_val_loss is None or val_loss < best_val_loss - args.early_stopping_min_delta
                     if improved:

@@ -20,7 +20,12 @@ from pydantic import BaseModel, Field
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lora_moe.components import FeatureToSoftPromptProjector, FrozenStage1RainEncoder
-from lora_moe.datasets import stage1_rain_collate
+from lora_moe.datasets import (
+    build_stage1_metadata_prompt,
+    normalize_stage1_rainfall,
+    stage1_rain_collate,
+    stage1_rain_level,
+)
 from lora_moe.train.stage1_rain_lora import dtype_from_name
 
 
@@ -459,6 +464,7 @@ class Stage1RainServiceRunner:
         max_passes: int,
         pass_gap_threshold_s: float,
         min_pass_points: int,
+        no_rain_threshold: float,
     ) -> None:
         self.model_dir = model_dir
         self.output_dir = output_dir
@@ -474,6 +480,7 @@ class Stage1RainServiceRunner:
         self.max_passes = max_passes
         self.pass_gap_threshold_s = pass_gap_threshold_s
         self.min_pass_points = min_pass_points
+        self.no_rain_threshold = no_rain_threshold
         self.lock = threading.Lock()
         self.model_lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -562,6 +569,7 @@ class Stage1RainServiceRunner:
             "latest_phy_time": latest_time.isoformat(sep=" ", timespec="seconds") if latest_time else None,
             "latest_phy_age_s": round(age_s, 3) if age_s is not None else None,
             "pred_rainfall_mm": None,
+            "reported_rainfall_mm": None,
             "recent_passes": [],
         }
 
@@ -587,7 +595,9 @@ class Stage1RainServiceRunner:
         batch = stage1_rain_collate([dataset[i] | {
             "satellite_id": int(passes[i]["satellite_id"]),
             "pass_start": str(pd.DatetimeIndex(passes[i]["timestamps"])[0]),
-            "rainfall_mm": 0.0,
+            "pass_end": str(pd.DatetimeIndex(passes[i]["timestamps"])[-1]),
+            "points": int(len(pd.DatetimeIndex(passes[i]["timestamps"]))),
+            "true_rainfall_mm": 0.0,
             "answer": "",
         } for i in range(len(dataset))])
         features = batch["features"].to(self.input_device, dtype=torch.float32)
@@ -605,12 +615,16 @@ class Stage1RainServiceRunner:
         for p, y, prob in zip(passes, rainfall, rain_prob):
             ts = pd.DatetimeIndex(p["timestamps"])
             image = p.get("image_weather")
+            raw_rainfall = float(y)
+            display_rainfall = normalize_stage1_rainfall(raw_rainfall, self.no_rain_threshold)
             row = {
                 "satellite_id": int(p["satellite_id"]),
                 "pass_start": str(ts[0]),
                 "pass_end": str(ts[-1]),
                 "points": int(len(ts)),
-                "pred_rainfall_mm": round(float(y), 6),
+                "pred_rainfall_mm": round(raw_rainfall, 6),
+                "reported_rainfall_mm": round(float(display_rainfall), 6),
+                "rainfall_level": stage1_rain_level(raw_rainfall, self.no_rain_threshold),
                 "rain_probability": round(float(prob), 6),
             }
             if image is not None:
@@ -630,6 +644,8 @@ class Stage1RainServiceRunner:
             "latest_phy_time": latest_time.isoformat(sep=" ", timespec="seconds"),
             "latest_phy_age_s": round(max(0.0, age_s), 3),
             "pred_rainfall_mm": rows[0]["pred_rainfall_mm"],
+            "reported_rainfall_mm": rows[0]["reported_rainfall_mm"],
+            "rainfall_level": rows[0]["rainfall_level"],
             "rain_probability": rows[0]["rain_probability"],
             "recent_passes": rows,
             "stage1_soft_embeds": stage1_embeds[:1].detach(),
@@ -642,9 +658,10 @@ class Stage1RainServiceRunner:
             except Exception as exc:
                 self._set_cache({
                     "status": "error",
-                    "message": "Stage1反演失败",
+                    "message": "链路反演失败",
                     "error": repr(exc),
                     "pred_rainfall_mm": None,
+                    "reported_rainfall_mm": None,
                     "recent_passes": [],
                 })
             self.stop_event.wait(self.poll_interval_s)
@@ -665,16 +682,22 @@ class Stage1RainServiceRunner:
         keywords = ("stage1", "反演", "链路", "当前降雨", "当前雨量", "rainfall inversion", "link")
         return any(k in text for k in keywords)
 
-    def _prompt_embeds(self, prompt: str, stage1_embeds: torch.Tensor):
+    def _prompt_embeds(self, prompt: str, stage1_embeds: torch.Tensor, latest_pass: dict):
         user_prompt = prompt.strip() or "请根据最新卫星链路反演结果，说明当前降雨情况。"
+        metadata = build_stage1_metadata_prompt(
+            satellite_id=int(latest_pass["satellite_id"]),
+            pass_start=str(latest_pass["pass_start"]),
+            pass_end=str(latest_pass["pass_end"]),
+            points=int(latest_pass["points"]),
+        )
         prefix = (
             "<|im_start|>system\n"
-            "你是卫星链路降雨反演助手。你会收到 Stage1 反演专家的 soft tokens。"
-            "请基于这些专家结果回答，不要提到 token、编码器、LoRA、特征向量或模型内部实现。"
-            "除非用户明确要求英文，否则使用中文。\n"
+            "你是卫星链路降雨反演助手。你会收到最新过境元信息和卫星链路反演专家表示。"
+            "请基于专家表示回答本次过境降雨量，回答要包含卫星ID、过境起止时间和反演结论。"
+            "不要提到 token、编码器、LoRA、特征向量或模型内部实现。除非用户明确要求英文，否则使用中文。\n"
             "<|im_end|>\n"
             "<|im_start|>user\n"
-            "下面是最新卫星过境的 Stage1 反演专家表示："
+            f"{metadata}\n"
         )
         suffix = f"\n用户问题：{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
         embedding = self.model.get_input_embeddings()
@@ -691,7 +714,7 @@ class Stage1RainServiceRunner:
         use_stage1 = self._route_stage1(request.prompt, request.task_mode)
         state = self.cache
         if not use_stage1:
-            state = {"status": "text_only", "message": "未触发 Stage1 反演专家"}
+            state = {"status": "text_only", "message": "未触发卫星链路反演专家"}
         elif state.get("status") == "not_started":
             state = self.update_once()
             self._set_cache(state)
@@ -712,8 +735,8 @@ class Stage1RainServiceRunner:
             latest = self.latest()
             return GenerateResponse(
                 prompt=request.prompt,
-                generated_text="Stage1反演失败",
-                full_text="Stage1反演失败",
+                generated_text="链路反演失败",
+                full_text="链路反演失败",
                 input_tokens=0,
                 output_tokens=0,
                 modality_status="stage1_error",
@@ -724,7 +747,12 @@ class Stage1RainServiceRunner:
         do_sample = request.temperature > 0
         if use_stage1:
             stage1_embeds = state["stage1_soft_embeds"]
-            inputs_embeds, attention_mask, model_prompt = self._prompt_embeds(request.prompt, stage1_embeds)
+            latest_pass = (state.get("recent_passes") or [{}])[0]
+            inputs_embeds, attention_mask, model_prompt = self._prompt_embeds(
+                request.prompt,
+                stage1_embeds,
+                latest_pass,
+            )
             with self.model_lock:
                 output_ids = self.model.generate(
                     inputs_embeds=inputs_embeds,
@@ -797,7 +825,7 @@ INDEX_HTML = r"""<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stage1 A2B2 在线反演</title>
+  <title>卫星链路降雨反演</title>
   <style>
     body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#f6f7f9; color:#1f2933; }
     h1, main { width:min(1100px,calc(100vw - 32px)); margin:24px auto; }
@@ -818,7 +846,7 @@ INDEX_HTML = r"""<!doctype html>
   </style>
 </head>
 <body>
-  <h1>Stage1 A2B2 在线反演</h1>
+  <h1>卫星链路降雨反演</h1>
   <main>
     <section>
       <div class="field" style="margin-top:0">
@@ -829,7 +857,7 @@ INDEX_HTML = r"""<!doctype html>
         <label for="taskMode">路由</label>
         <select id="taskMode">
           <option value="auto" selected>自动判断</option>
-          <option value="stage1">强制 Stage1 反演</option>
+          <option value="stage1">强制链路反演</option>
           <option value="text">只用文本</option>
         </select>
       </div>
@@ -844,7 +872,7 @@ INDEX_HTML = r"""<!doctype html>
         </div>
       </div>
       <button id="send">发送</button>
-      <button id="refresh" type="button">刷新 Stage1 缓存</button>
+      <button id="refresh" type="button">刷新反演缓存</button>
       <div class="status" id="status"></div>
     </section>
     <section>
@@ -911,7 +939,7 @@ INDEX_HTML = r"""<!doctype html>
 
 
 def create_app(runner: Stage1RainServiceRunner) -> FastAPI:
-    app = FastAPI(title="LoRA-MoE Stage1 Rain API", version="0.1.0")
+    app = FastAPI(title="LoRA-MoE Satellite Link Rain API", version="0.1.0")
 
     @app.on_event("startup")
     def startup_event():
@@ -966,6 +994,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-passes", type=int, default=8)
     parser.add_argument("--pass-gap-threshold-s", type=float, default=60.0)
     parser.add_argument("--min-pass-points", type=int, default=10)
+    parser.add_argument("--no-rain-threshold", type=float, default=0.05)
     return parser.parse_args()
 
 
@@ -990,6 +1019,7 @@ def main() -> None:
         max_passes=args.max_passes,
         pass_gap_threshold_s=args.pass_gap_threshold_s,
         min_pass_points=args.min_pass_points,
+        no_rain_threshold=args.no_rain_threshold,
     )
     app = create_app(runner)
     print(f"Serving LoRA-MoE Stage1 rainfall FastAPI on http://{args.host}:{args.port}", flush=True)

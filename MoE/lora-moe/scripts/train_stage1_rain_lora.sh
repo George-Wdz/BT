@@ -29,6 +29,7 @@
 #   LORA_ALPHA               LoRA 缩放。常用 2*r，例如 r=8 时 alpha=16。
 #   LORA_DROPOUT             小数据推荐 0.05，过拟合可试 0.1。
 #   LORA_TARGET_MODULES      LoRA 注入层。默认 q_proj,v_proj，优先保持 Qwen 语言能力。
+#   NO_RAIN_THRESHOLD        输出口径阈值。Stage1 预测小于该值时训练回答记为无雨/0mm，默认 0.05。
 
 set -euo pipefail
 
@@ -66,6 +67,7 @@ LORA_R=${LORA_R:-8}
 LORA_ALPHA=${LORA_ALPHA:-16}
 LORA_DROPOUT=${LORA_DROPOUT:-0.05}
 LORA_TARGET_MODULES=${LORA_TARGET_MODULES:-q_proj,v_proj}
+NO_RAIN_THRESHOLD=${NO_RAIN_THRESHOLD:-0.05}
 
 LOG_DIR=${LOG_DIR:-logs}
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
@@ -98,6 +100,7 @@ declare -a CMD=(
   --lora-alpha "$LORA_ALPHA"
   --lora-dropout "$LORA_DROPOUT"
   --lora-target-modules "$LORA_TARGET_MODULES"
+  --no-rain-threshold "$NO_RAIN_THRESHOLD"
 )
 
 {
@@ -127,6 +130,7 @@ declare -a CMD=(
   echo "LORA_ALPHA: $LORA_ALPHA"
   echo "LORA_DROPOUT: $LORA_DROPOUT"
   echo "LORA_TARGET_MODULES: $LORA_TARGET_MODULES"
+  echo "NO_RAIN_THRESHOLD: $NO_RAIN_THRESHOLD"
   echo "LOG_FILE: $LOG_FILE"
   echo "Command: ${CMD[*]} $*"
   echo "========================================"

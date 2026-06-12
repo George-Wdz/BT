@@ -12,6 +12,7 @@
 #   STALE_AFTER_S       最新 phy_data 超过该秒数视为无最新卫星过境。
 #   LOOKBACK_HOURS      每次轮询只读取最近多少小时 DB 数据，不全库重建。
 #   MAX_PASSES          每次最多保留最近多少个 pass 做 Stage1 推理。
+#   NO_RAIN_THRESHOLD   输出口径阈值。Stage1 预测小于该值时展示为无雨/0mm，默认 0.06。
 #   DEVICE_MAP          Qwen 多卡切分方式，14B 推荐 auto。
 
 set -euo pipefail
@@ -43,6 +44,7 @@ LOOKBACK_HOURS=${LOOKBACK_HOURS:-4}
 MAX_PASSES=${MAX_PASSES:-8}
 PASS_GAP_THRESHOLD_S=${PASS_GAP_THRESHOLD_S:-60}
 MIN_PASS_POINTS=${MIN_PASS_POINTS:-10}
+NO_RAIN_THRESHOLD=${NO_RAIN_THRESHOLD:-0.06}
 
 declare -a CMD=(
   "$PYTHON" -m lora_moe.serve.stage1_rain_fastapi
@@ -61,6 +63,7 @@ declare -a CMD=(
   --max-passes "$MAX_PASSES"
   --pass-gap-threshold-s "$PASS_GAP_THRESHOLD_S"
   --min-pass-points "$MIN_PASS_POINTS"
+  --no-rain-threshold "$NO_RAIN_THRESHOLD"
 )
 
 if [[ "$USE_BEST" = "1" ]]; then

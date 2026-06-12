@@ -44,7 +44,7 @@ satellite pass features
   -> 中文降雨量回答
 ```
 
-Stage1 首版训练目标很窄：让 Qwen 根据反演 token 输出“本次卫星过境降雨量约为 X 毫米”。这不代表 Stage1 小模型本身已经足够准确；后续 Stage1 权重更新后，应重新训练对应 projector 和 A2B2 LoRA。
+Stage1 首版训练目标很窄：让 Qwen 根据反演 token 输出“本次卫星过境降雨量约为 X 毫米”。回答目标使用冻结 Stage1 小模型自己的预测值，而不是雨量计真实标签，这样训练和在线推理保持一致。雨量计分辨率按 `NO_RAIN_THRESHOLD=0.06` 处理，预测值低于该阈值时按无雨/0mm 表达。这不代表 Stage1 小模型本身已经足够准确；后续 Stage1 权重更新后，应重新训练对应 projector 和 A2B2 LoRA。
 
 ## 目录
 
@@ -136,6 +136,7 @@ conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 | `LORA_R` / `LORA_ALPHA` | `8` / `16` |
 | `LORA_DROPOUT` | `0.05` |
 | `LEARNING_RATE` | `2e-4` |
+| `NO_RAIN_THRESHOLD` | `0.06` |
 
 ## 推理
 
@@ -203,6 +204,7 @@ Stage1 A2B2 服务启动时会持久化加载：
 | `MAX_PASSES` | `8` | 每次最多保留最近几个 pass |
 | `USE_BEST` | `1` | 加载 `best/adapter` 和 `best/projector.pt` |
 | `SENSOR_DB_PATH` | `/home/wdz/satellite_data/satellite_data.db` | 实时卫星数据库 |
+| `NO_RAIN_THRESHOLD` | `0.06` | 低于该阈值的 Stage1 预测展示为无雨/0mm |
 
 ## 产物管理
 

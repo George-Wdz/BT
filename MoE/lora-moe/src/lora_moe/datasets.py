@@ -104,17 +104,113 @@ def _stage1_sat_mapper_from_meta(meta: dict) -> SatelliteIDMapper:
     return mapper
 
 
-def _stage1_pass_time(p: dict) -> str:
-    ts = p["timestamps"][0]
-    return str(ts)
+def _stage1_pass_start(p: dict) -> str:
+    return str(p["timestamps"][0])
 
 
-def _format_rainfall(value: float) -> str:
-    if value < 0.01:
-        return "0.000"
+def _stage1_pass_end(p: dict) -> str:
+    return str(p["timestamps"][-1])
+
+
+def normalize_stage1_rainfall(value: float, no_rain_threshold: float = 0.05) -> float:
+    value = max(float(value), 0.0)
+    return 0.0 if value < float(no_rain_threshold) else value
+
+
+def stage1_rain_level(value: float, no_rain_threshold: float = 0.05) -> str:
+    value = normalize_stage1_rainfall(value, no_rain_threshold)
+    if value <= 0.0:
+        return "dry"
+    if value < 0.1:
+        return "weak"
+    if value < 1.0:
+        return "light"
+    return "moderate"
+
+
+def format_stage1_rainfall(value: float, no_rain_threshold: float = 0.05) -> str:
+    value = normalize_stage1_rainfall(value, no_rain_threshold)
+    if value <= 0.0:
+        return "0"
     if value < 1.0:
         return f"{value:.3f}"
     return f"{value:.2f}"
+
+
+def build_stage1_metadata_prompt(
+    *,
+    satellite_id: int,
+    pass_start: str,
+    pass_end: str,
+    points: int,
+) -> str:
+    return (
+        "最新卫星过境信息：\n"
+        f"- 卫星ID：{satellite_id}\n"
+        f"- 过境开始：{pass_start}\n"
+        f"- 过境结束：{pass_end}\n"
+        f"- 采样点数：{points}\n"
+        "下面是卫星链路反演专家表示，请根据该专家表示判断本次过境降雨量。"
+    )
+
+
+def _rain_probability_basis(rain_probability: float | None) -> str:
+    if rain_probability is None:
+        return "依据是链路反演信号的整体变化。"
+    prob = float(rain_probability)
+    if prob < 0.2:
+        return "依据是链路降雨信号较弱，降雨可能性较低。"
+    if prob < 0.5:
+        return "依据是链路中存在一定降雨扰动，但整体强度仍偏弱。"
+    return "依据是链路中出现较明显的降雨扰动。"
+
+
+def build_stage1_rain_answer(
+    *,
+    satellite_id: int,
+    pass_start: str,
+    pass_end: str,
+    points: int,
+    pred_rainfall_mm: float,
+    rain_probability: float | None = None,
+    no_rain_threshold: float = 0.05,
+    template_idx: int = 0,
+) -> str:
+    display_rain = normalize_stage1_rainfall(pred_rainfall_mm, no_rain_threshold)
+    rain_text = format_stage1_rainfall(pred_rainfall_mm, no_rain_threshold)
+    level = stage1_rain_level(pred_rainfall_mm, no_rain_threshold)
+    basis = _rain_probability_basis(rain_probability)
+
+    templates = {
+        "dry": [
+            "卫星{satellite_id}本次过境时间为{pass_start}至{pass_end}，采样点数为{points}。链路反演结果显示无明显降雨，本次降雨量记为0毫米。{basis}",
+            "最新过境卫星为{satellite_id}，时间窗口为{pass_start}至{pass_end}。卫星链路反演未检测到有效降雨信号，估计降雨量为0毫米。{basis}",
+            "根据卫星链路反演专家，卫星{satellite_id}在{pass_start}至{pass_end}过境期间降雨信号很弱，估计降雨量为0毫米。{basis}",
+        ],
+        "weak": [
+            "卫星{satellite_id}本次过境时间为{pass_start}至{pass_end}，链路反演显示存在微弱降雨信号，估计降雨量约为{rain_text}毫米。{basis}",
+            "最新过境卫星为{satellite_id}，采样点数为{points}。链路反演结果显示降雨量约为{rain_text}毫米，属于微弱降雨信号。{basis}",
+        ],
+        "light": [
+            "根据卫星链路反演专家，卫星{satellite_id}在{pass_start}至{pass_end}的过境片段对应小雨信号，估计降雨量约为{rain_text}毫米。{basis}",
+            "卫星{satellite_id}最新过境窗口为{pass_start}至{pass_end}，链路反演降雨量约为{rain_text}毫米，可判断为小雨量级。{basis}",
+        ],
+        "moderate": [
+            "链路反演结果显示，卫星{satellite_id}于{pass_start}至{pass_end}过境期间存在较明显降雨，估计降雨量约为{rain_text}毫米。{basis}",
+            "最新卫星{satellite_id}过境片段显示明显降雨信号，时间为{pass_start}至{pass_end}，反演降雨量约为{rain_text}毫米。{basis}",
+        ],
+    }
+    choices = templates[level]
+    template = choices[int(template_idx) % len(choices)]
+    return template.format(
+        satellite_id=satellite_id,
+        pass_start=pass_start,
+        pass_end=pass_end,
+        points=points,
+        rain_text=rain_text,
+        basis=basis,
+        display_rain=display_rain,
+    )
 
 
 class Stage1RainInstructionDataset(Dataset):
@@ -183,13 +279,17 @@ class Stage1RainInstructionDataset(Dataset):
         pass_obj = self.passes[idx]
         rainfall = float(sample["labels_phys"][0])
         satellite_id = int(pass_obj["satellite_id"])
-        answer = f"根据链路反演结果，本次卫星过境降雨量约为{_format_rainfall(rainfall)}毫米。"
+        pass_start = _stage1_pass_start(pass_obj)
+        pass_end = _stage1_pass_end(pass_obj)
+        points = len(pass_obj["timestamps"])
         return {
             **sample,
             "satellite_id": satellite_id,
-            "pass_start": _stage1_pass_time(pass_obj),
-            "rainfall_mm": rainfall,
-            "answer": answer,
+            "pass_start": pass_start,
+            "pass_end": pass_end,
+            "points": points,
+            "true_rainfall_mm": rainfall,
+            "answer": "",
         }
 
 
@@ -202,5 +302,7 @@ def stage1_rain_collate(batch: list[dict]) -> dict:
         "answer": [item["answer"] for item in batch],
         "satellite_id": [item["satellite_id"] for item in batch],
         "pass_start": [item["pass_start"] for item in batch],
-        "rainfall_mm": [item["rainfall_mm"] for item in batch],
+        "pass_end": [item["pass_end"] for item in batch],
+        "points": [item["points"] for item in batch],
+        "true_rainfall_mm": [item["true_rainfall_mm"] for item in batch],
     }

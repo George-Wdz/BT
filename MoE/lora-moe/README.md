@@ -46,7 +46,7 @@ satellite pass features
 
 Only the projector and LoRA parameters are trained. The external encoders and the base language model remain frozen.
 
-The first Stage1 training target is intentionally narrow: Qwen learns to produce short Chinese rainfall answers such as "the rainfall for this satellite pass is about X mm" from Stage1 tokens. This does not mean the Stage1 model itself is already accurate enough. After the Stage1 checkpoint improves, retrain the corresponding projector and A2B2 LoRA.
+The first Stage1 training target is intentionally narrow: Qwen learns to produce short Chinese rainfall answers such as "the rainfall for this satellite pass is about X mm" from Stage1 tokens. The answer target uses the frozen Stage1 model prediction instead of the rain-gauge ground-truth label, so training and online inference stay consistent. The rain-gauge resolution is handled with `NO_RAIN_THRESHOLD=0.06`; predictions below this threshold are expressed as no rain / 0 mm. This does not mean the Stage1 model itself is already accurate enough. After the Stage1 checkpoint improves, retrain the corresponding projector and A2B2 LoRA.
 
 ## Directory Layout
 
@@ -138,6 +138,7 @@ Default key settings:
 | `LORA_R` / `LORA_ALPHA` | `8` / `16` |
 | `LORA_DROPOUT` | `0.05` |
 | `LEARNING_RATE` | `2e-4` |
+| `NO_RAIN_THRESHOLD` | `0.06` |
 
 ## Inference
 
@@ -207,6 +208,7 @@ Key online parameters:
 | `MAX_PASSES` | `8` | Maximum recent passes kept per update |
 | `USE_BEST` | `1` | Load `best/adapter` and `best/projector.pt` |
 | `SENSOR_DB_PATH` | `/home/wdz/satellite_data/satellite_data.db` | Online satellite DB |
+| `NO_RAIN_THRESHOLD` | `0.06` | Display Stage1 predictions below this threshold as no rain / 0 mm |
 
 ## Artifact Management
 
