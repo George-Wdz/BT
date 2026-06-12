@@ -58,6 +58,7 @@ Shareable datasets or model artifacts should be stored separately, for example i
 
 ## Documentation
 
-- [Stage1 README](Stage1/README.md)
-- [Stage1.5 README](Stage1.5/README.md)
+- [Stage1 README](Stage1/README.md) / [中文](Stage1/README_CN.md)
+- [Stage1.5 README](Stage1.5/README.md) / [中文](Stage1.5/README_CN.md)
+- [Stage2 README](Stage2/README.md) / [中文](Stage2/README_CN.md)
 - [Methodology draft](docs/methodology.md)
