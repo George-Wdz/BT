@@ -3,10 +3,9 @@
 #
 # Default flow:
 #   1. Predict camera weather labels with a minute-level timestamp.
-#   2. Build a timestamped NPZ dataset from link/weather DB + camera labels.
+#   2. Incrementally merge new DB rows into a timestamped NPZ dataset.
 #   3. Train the recommended drybase + summary + instant-aux model.
-#   4. Run same-satellite rainy/dry link analysis.
-#   5. Export full predictions, rainy-only predictions, and MAE/MSE/RMSE metrics.
+#   4. Export full predictions, rainy-only predictions, and MAE/MSE/RMSE metrics.
 
 set -euo pipefail
 
@@ -43,6 +42,22 @@ run_logged() {
   "$@" 2>&1 | tee -a "$WORKFLOW_LOG"
 }
 
+latest_existing_npz() {
+  if [[ -n "${INCREMENTAL_SOURCE_NPZ:-}" ]]; then
+    echo "$INCREMENTAL_SOURCE_NPZ"
+    return
+  fi
+  if [[ -f "$PASS_DATASET_PATH" ]]; then
+    echo "$PASS_DATASET_PATH"
+    return
+  fi
+  find "$DATASET_DIR" -maxdepth 1 -type f -name "pass_dataset_*.npz" \
+    ! -path "$PASS_DATASET_PATH" -printf '%T@ %p\n' 2>/dev/null |
+    sort -n |
+    tail -1 |
+    cut -d' ' -f2-
+}
+
 log "Stage1 workflow started"
 log "dataset_name=$DATASET_NAME"
 log "run_ts=$RUN_TS"
@@ -53,13 +68,44 @@ log "results=$RUN_RESULT_DIR"
 
 export RUN_TS
 export PASS_DATASET_PATH
-export BUILD_NPZ="${BUILD_NPZ:-1}"
-export REBUILD_NPZ="${REBUILD_NPZ:-1}"
-run_logged bash scripts/predict_camera_weather.sh
+export BATCH_SIZE="${VISION_BATCH_SIZE:-${BATCH_SIZE:-64}}"
+if [[ "${INCREMENTAL_NPZ:-1}" = "1" ]]; then
+  export BUILD_NPZ=0
+  run_logged bash scripts/predict_camera_weather.sh
 
-if [[ ! -f "$SLIM_LABEL_CSV" ]]; then
-  echo "Missing expected label CSV: $SLIM_LABEL_CSV" >&2
-  exit 1
+  if [[ ! -f "$SLIM_LABEL_CSV" ]]; then
+    echo "Missing expected label CSV: $SLIM_LABEL_CSV" >&2
+    exit 1
+  fi
+
+  SOURCE_NPZ="$(latest_existing_npz || true)"
+  if [[ -n "$SOURCE_NPZ" && -f "$SOURCE_NPZ" ]]; then
+    log "incremental_npz=1 source_npz=$SOURCE_NPZ output_npz=$PASS_DATASET_PATH"
+    run_logged python3 scripts/incremental_build_pass_dataset.py \
+      --db-path "${DB_PATH:-/home/wdz/satellite_data/satellite_data.db}" \
+      --existing-npz "$SOURCE_NPZ" \
+      --output-path "$PASS_DATASET_PATH" \
+      --image-csv "$SLIM_LABEL_CSV" \
+      --image-tolerance "${IMAGE_TOLERANCE:-10min}" \
+      --lookback-minutes "${INCREMENTAL_LOOKBACK_MINUTES:-20}"
+  else
+    log "incremental_npz=1 but no source NPZ found; building full dataset"
+    run_logged python3 scripts/incremental_build_pass_dataset.py \
+      --db-path "${DB_PATH:-/home/wdz/satellite_data/satellite_data.db}" \
+      --existing-npz "$PASS_DATASET_PATH" \
+      --output-path "$PASS_DATASET_PATH" \
+      --image-csv "$SLIM_LABEL_CSV" \
+      --image-tolerance "${IMAGE_TOLERANCE:-10min}"
+  fi
+else
+  export BUILD_NPZ=1
+  export REBUILD_NPZ="${REBUILD_NPZ:-1}"
+  run_logged bash scripts/predict_camera_weather.sh
+
+  if [[ ! -f "$SLIM_LABEL_CSV" ]]; then
+    echo "Missing expected label CSV: $SLIM_LABEL_CSV" >&2
+    exit 1
+  fi
 fi
 if [[ ! -f "$PASS_DATASET_PATH" ]]; then
   echo "Missing expected dataset NPZ: $PASS_DATASET_PATH" >&2
@@ -88,10 +134,15 @@ if [[ -z "$CKPT_DIR" || ! -f "$CKPT_DIR/checkpoint.pth" ]]; then
 fi
 log "selected_checkpoint=$CKPT_DIR"
 
-LINK_ANALYSIS_DIR="$RUN_RESULT_DIR/link_diff"
-run_logged python3 "$STAGE1_ROOT/analysis/satellite_weather_diff/analyze_satellite_weather_diff.py" \
-  --npz "$PASS_DATASET_PATH" \
-  --out-dir "$LINK_ANALYSIS_DIR"
+if [[ "${RUN_LINK_ANALYSIS:-0}" = "1" ]]; then
+  LINK_ANALYSIS_DIR="$RUN_RESULT_DIR/link_diff"
+  run_logged python3 "$STAGE1_ROOT/analysis/satellite_weather_diff/analyze_satellite_weather_diff.py" \
+    --npz "$PASS_DATASET_PATH" \
+    --out-dir "$LINK_ANALYSIS_DIR"
+else
+  LINK_ANALYSIS_DIR=""
+  log "skip link text analysis; metrics are exported by evaluate_checkpoint_splits.py"
+fi
 
 PRED_CSV="$RUN_RESULT_DIR/${DATASET_NAME}_predictions.csv"
 TEST_CSV="$RUN_RESULT_DIR/${DATASET_NAME}_test_predictions.csv"

@@ -358,7 +358,9 @@ def save_dataset_artifacts(dataset: List[Dict], db_path: str,
 def build_pass_dataset(db_path: str, output_path: str = None,
                        feature_cols: dict | None = None,
                        strict_source_filters: bool = False,
-                       image_weather_cfg: dict | None = None) -> List[Dict]:
+                       image_weather_cfg: dict | None = None,
+                       start_time: str | None = None,
+                       end_time: str | None = None) -> List[Dict]:
     """构建 pass-based 数据集的完整流程"""
     feature_cols = feature_cols or {
         "link": LINK_COLS,
@@ -376,19 +378,23 @@ def build_pass_dataset(db_path: str, output_path: str = None,
         db_path,
         feature_cols=link_cols,
         strict_source_filters=strict_source_filters,
+        start_time=start_time,
+        end_time=end_time,
     ).set_index("localTime").sort_index()
 
     print("Loading position_data from DB...")
     pos = load_position_data(
         db_path,
         strict_source_filters=strict_source_filters,
+        start_time=start_time,
+        end_time=end_time,
     ).set_index("localTime")[pos_cols].sort_index()
 
     print("Loading weather_data from DB...")
-    gw = load_ground_weather(db_path)
+    gw = load_ground_weather(db_path, start_time=start_time, end_time=end_time)
 
     print("Loading weather_station from DB...")
-    ws = load_weather_station(db_path)
+    ws = load_weather_station(db_path, start_time=start_time, end_time=end_time)
 
     print("Merging input weather...")
     gw_merged = merge_ground_weather(gw, ws)
