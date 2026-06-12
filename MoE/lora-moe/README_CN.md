@@ -1,23 +1,23 @@
-# LoRA-MoE: Visual Weather Adapter
+# LoRA-MoE：视觉天气适配器
 
 [English](README.md) | [中文](README_CN.md)
 
-This directory contains project-specific code for a parameter-efficient visual weather adapter. It is an early LoRA-MoE prototype: the current implementation focuses on the `vision_weather` expert and uses image features as soft tokens for a Qwen language model.
+本目录保存项目自有的参数高效视觉天气适配代码。它是 LoRA-MoE 路线的早期原型：当前只实现 `vision_weather` 专家，用视觉特征生成 soft tokens，再输入 Qwen 语言模型。
 
-## Scope
+## 范围
 
-| Item | Description |
+| 项 | 说明 |
 | --- | --- |
-| Current task | Weather recognition from camera images. |
-| Classes | `sunny`, `cloudy`, `rain` |
-| Vision encoder | Frozen `WeatherClassifier` encoder. |
-| Projector | Trainable MLP that maps visual features to soft tokens. |
-| Language model | Qwen2.5-14B-Instruct, frozen except LoRA parameters. |
-| LoRA target modules | `q_proj`, `v_proj` |
+| 当前任务 | 相机图像天气识别 |
+| 类别 | `sunny`、`cloudy`、`rain` |
+| 视觉编码器 | 冻结的 `WeatherClassifier` encoder |
+| Projector | 可训练 MLP，将视觉特征映射为 soft tokens |
+| 语言模型 | Qwen2.5-14B-Instruct，除 LoRA 外冻结 |
+| LoRA 注入层 | `q_proj`、`v_proj` |
 
-This module is separate from the direct image-classifier path used by Stage1 data construction. It is intended to validate model-input-level multimodal adaptation, not to replace the full rainfall retrieval pipeline.
+该模块与 Stage1 数据构建中直接使用图像分类器导出概率的路径不同。它用于验证模型输入层的多模态适配，不直接替代完整降雨反演流程。
 
-## Architecture
+## 结构
 
 ```text
 image
@@ -26,12 +26,12 @@ image
   -> trainable projector
   -> visual soft tokens
   -> Qwen2.5-14B-Instruct + vision_weather LoRA
-  -> Chinese weather response
+  -> 中文天气回答
 ```
 
-Only the projector and LoRA parameters are trained. The vision encoder and base language model remain frozen.
+训练时只更新 projector 和 LoRA 参数。视觉编码器和基座语言模型保持冻结。
 
-## Directory Layout
+## 目录
 
 ```text
 MoE/lora-moe/
@@ -45,11 +45,11 @@ MoE/lora-moe/
     serve/
 ```
 
-Generated adapters, projector weights, logs, and checkpoints are ignored by Git.
+生成的 adapter、projector 权重、日志和 checkpoint 不进入 Git。
 
-## Training
+## 训练
 
-Smoke test:
+Smoke test：
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
@@ -60,7 +60,7 @@ OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_smoke \
 conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh
 ```
 
-Full first-pass training:
+首版完整训练：
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
@@ -73,19 +73,19 @@ OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_v1 \
 conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh
 ```
 
-Default key settings:
+关键默认参数：
 
-| Parameter | Default |
+| 参数 | 默认值 |
 | --- | --- |
 | `BATCH_SIZE` | `1` |
-| `GRAD_ACCUM_STEPS` | `8` for smoke test, `16` for larger runs |
+| `GRAD_ACCUM_STEPS` | smoke test 用 `8`，较大训练用 `16` |
 | `NUM_VISUAL_TOKENS` | `8` |
 | `PROJECTOR_HIDDEN_DIM` | `1024` |
 | `LORA_R` / `LORA_ALPHA` | `8` / `16` |
 | `LORA_DROPOUT` | `0.05` |
 | `LEARNING_RATE` | `2e-4` |
 
-## Inference
+## 推理
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
@@ -94,7 +94,7 @@ OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1 \
 conda run --no-capture-output -n smoe bash scripts/infer_vision_weather.sh
 ```
 
-Optional inputs:
+可选输入：
 
 ```bash
 IMAGE=/path/to/image.jpg bash scripts/infer_vision_weather.sh
@@ -102,7 +102,7 @@ IMAGE_DIR=/path/to/images bash scripts/infer_vision_weather.sh
 SAVE_JSONL=/tmp/vision_weather_predictions.jsonl bash scripts/infer_vision_weather.sh
 ```
 
-## Service
+## 服务
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
@@ -110,16 +110,16 @@ CUDA_VISIBLE_DEVICES=0,1 \
 conda run --no-capture-output -n smoe bash scripts/serve_vision_weather_fastapi.sh
 ```
 
-## Artifact Policy
+## 产物管理
 
-Do not commit:
+不要提交：
 
-- Qwen base weights;
-- WeatherClassifier weights;
-- LoRA adapter outputs;
-- `projector.pt`;
-- logs and intermediate checkpoints;
-- image datasets.
+- Qwen 基座权重；
+- WeatherClassifier 权重；
+- LoRA adapter 输出；
+- `projector.pt`；
+- 日志和中间 checkpoint；
+- 图像数据集。
 
-Store shareable model artifacts separately, for example in a private Hugging Face Model repository.
+可共享模型产物应单独保存，例如私有 Hugging Face Model 仓库。
 
