@@ -4,7 +4,7 @@
 
 This repository contains project-specific code and documentation for rainfall retrieval and forecasting from LEO satellite-link observations, ground weather data, camera-derived weather cues, and time-series forecasting models.
 
-The repository is a lightweight code backup. Raw data, database snapshots, model weights, checkpoints, logs, and third-party reproduced repositories are intentionally excluded.
+The repository is a lightweight code backup. Raw data, database snapshots, model weights, checkpoints, logs, and third-party reproduced repositories are kept outside this GitHub repository.
 
 ## Project Structure
 
@@ -45,7 +45,7 @@ Keep the original licenses, citations, and installation instructions from each u
 
 ## Data and Artifacts
 
-Do not commit:
+The following content is not included in this repository:
 
 - SQLite databases and backups
 - raw camera images
@@ -54,7 +54,7 @@ Do not commit:
 - logs and local caches
 - downloaded third-party repositories
 
-Shareable datasets or model artifacts should be stored separately, for example in a private Hugging Face Dataset/Model repository.
+Shareable datasets and model artifacts can be released separately, for example through private Hugging Face Dataset/Model repositories or institutional object storage.
 
 ## Documentation
 

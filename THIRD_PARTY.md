@@ -10,6 +10,5 @@ This repository contains project-specific code and documentation. The following 
 Notes:
 
 - Keep upstream licenses, citations, and installation instructions.
-- Do not upload third-party model weights, checkpoints, caches, or datasets to this repository.
+- Third-party model weights, checkpoints, caches, and datasets are kept outside this repository.
 - If these dependencies must be versioned later, use Git submodules or project forks instead of copying the full external repositories into this codebase.
-

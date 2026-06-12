@@ -45,7 +45,7 @@ MoE/lora-moe/
     serve/
 ```
 
-Generated adapters, projector weights, logs, and checkpoints are ignored by Git.
+Generated adapters, projector weights, logs, and checkpoints are kept outside this repository.
 
 ## Training
 
@@ -110,9 +110,9 @@ CUDA_VISIBLE_DEVICES=0,1 \
 conda run --no-capture-output -n smoe bash scripts/serve_vision_weather_fastapi.sh
 ```
 
-## Artifact Policy
+## Artifact Management
 
-Do not commit:
+The following artifacts are not included in this repository:
 
 - Qwen base weights;
 - WeatherClassifier weights;
@@ -121,5 +121,4 @@ Do not commit:
 - logs and intermediate checkpoints;
 - image datasets.
 
-Store shareable model artifacts separately, for example in a private Hugging Face Model repository.
-
+Shareable model artifacts can be released separately, for example through a private Hugging Face Model repository or institutional object storage.

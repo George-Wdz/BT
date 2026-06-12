@@ -45,7 +45,7 @@ MoE/lora-moe/
     serve/
 ```
 
-生成的 adapter、projector 权重、日志和 checkpoint 不进入 Git。
+生成的 adapter、projector 权重、日志和 checkpoint 暂不纳入本仓库。
 
 ## 训练
 
@@ -112,7 +112,7 @@ conda run --no-capture-output -n smoe bash scripts/serve_vision_weather_fastapi.
 
 ## 产物管理
 
-不要提交：
+以下产物暂不纳入本仓库：
 
 - Qwen 基座权重；
 - WeatherClassifier 权重；
@@ -121,5 +121,4 @@ conda run --no-capture-output -n smoe bash scripts/serve_vision_weather_fastapi.
 - 日志和中间 checkpoint；
 - 图像数据集。
 
-可共享模型产物应单独保存，例如私有 Hugging Face Model 仓库。
-
+可共享模型产物后续可单独发布，例如存放在私有 Hugging Face Model 仓库或单位对象存储中。

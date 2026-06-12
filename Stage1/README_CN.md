@@ -126,7 +126,7 @@ Scaler、卫星 ID 映射和 dry baseline 只使用训练集拟合，避免验�
 
 ## 输出
 
-以下产物不进入 Git：
+以下产物暂不纳入本仓库：
 
 | 输出 | 说明 |
 | --- | --- |
@@ -135,5 +135,4 @@ Scaler、卫星 ID 映射和 dry baseline 只使用训练集拟合，避免验�
 | `Stage1/model/logs/` | 训练日志 |
 | `Stage1/analysis/**/runs/` | 评估结果 |
 
-数据集和模型产物应放在 GitHub 外，例如私有 Hugging Face 仓库。
-
+数据集和模型产物后续可单独发布，例如存放在私有 Hugging Face 仓库或单位对象存储中。

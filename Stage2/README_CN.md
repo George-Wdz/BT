@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-Stage2 在规则时间网格上预测未来降雨。预测后端使用第三方 GPT4TS / One Fits All 实现；该代码在本地使用，但不直接纳入本仓库。
+Stage2 在规则时间网格上预测未来降雨。预测后端使用第三方 GPT4TS / One Fits All 实现；该代码在本地作为依赖使用，暂不纳入本仓库。
 
 上游项目：
 
@@ -29,7 +29,7 @@ date, feature_1, ..., feature_n, target
 
 Stage1 从卫星过境片段中反演降雨。Stage1.5 将 pass 级结果和气象站数据聚合成规则时间桶。Stage2 基于该结构化表学习未来降雨的时间演化。
 
-第三方 GPT4TS 代码不放入本仓库，以保留上游归属并控制仓库体积。依赖说明见 `THIRD_PARTY.md`。
+第三方 GPT4TS 代码保持独立，以保留上游归属并控制仓库体积。依赖说明见 `THIRD_PARTY.md`。
 
 ## 示例
 
@@ -52,4 +52,3 @@ python main.py \
 - `features=S` 是只使用目标列的单变量预测基线。
 - `features=M` 在原始 GPT4TS 实现中会预测所有数值列。
 - 如果需要“多变量输入、单变量降雨输出”，可能需要小改 data loader 或训练循环。
-

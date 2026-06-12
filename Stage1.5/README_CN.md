@@ -63,7 +63,7 @@ date, feature_1, ..., feature_n, target
 Stage2/GPT4TS/Long-term_Forecasting/datasets/weather/stage1_5_weather_10min.csv
 ```
 
-生成的 CSV 和 summary 文件不进入 Git。
+生成的 CSV 和 summary 文件暂不纳入本仓库，后续可随数据集版本单独发布。
 
 ## 使用
 
@@ -91,4 +91,3 @@ python3 build_stage2_weather_table.py \
   --freq 10min \
   --output /home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/datasets/weather/stage1_5_weather_10min.csv
 ```
-

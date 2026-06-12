@@ -122,7 +122,7 @@ Scalers, satellite ID mapping, and dry-baseline references are fitted from the t
 
 ## Outputs
 
-Generated files are intentionally ignored by Git:
+Generated files are kept outside this repository:
 
 | Output | Description |
 | --- | --- |
@@ -131,5 +131,4 @@ Generated files are intentionally ignored by Git:
 | `Stage1/model/logs/` | Training logs. |
 | `Stage1/analysis/**/runs/` | Evaluation outputs. |
 
-Model artifacts and datasets should be stored outside GitHub, for example in a private Hugging Face repository.
-
+Datasets and model artifacts can be released separately, for example in a private Hugging Face repository or institutional object storage.

@@ -63,7 +63,7 @@ Default output:
 Stage2/GPT4TS/Long-term_Forecasting/datasets/weather/stage1_5_weather_10min.csv
 ```
 
-Generated CSV and summary files are ignored by Git.
+Generated CSV and summary files are kept outside this repository and can be published separately with the corresponding dataset release.
 
 ## Usage
 
@@ -91,4 +91,3 @@ python3 build_stage2_weather_table.py \
   --freq 10min \
   --output /home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/datasets/weather/stage1_5_weather_10min.csv
 ```
-
