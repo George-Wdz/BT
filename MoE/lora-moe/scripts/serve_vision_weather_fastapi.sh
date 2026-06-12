@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 # Serve Qwen + vision-weather LoRA + projector with FastAPI.
+#
+# 常用启动：
+#   CUDA_VISIBLE_DEVICES=0,1 OUTPUT_DIR=outputs/vision_weather_lora_qv_v1 bash scripts/serve_vision_weather_fastapi.sh
+#   PORT=8010 SERVE_HOST=0.0.0.0 bash scripts/serve_vision_weather_fastapi.sh
+#
+# 关键参数：
+#   OUTPUT_DIR       视觉 A1B1 训练输出目录，里面应有 adapter/projector.pt 或 best/adapter/best/projector.pt。
+#   ADAPTER_DIR      手动指定 LoRA adapter 目录；设置后覆盖 OUTPUT_DIR 自动推断。
+#   PROJECTOR_PATH   手动指定 projector.pt；设置后覆盖 OUTPUT_DIR 自动推断。
+#   VISION_WEIGHTS   手动指定 WeatherClassifier 权重；默认读取 projector.pt 中记录的路径。
+#   SERVE_HOST       FastAPI 监听地址。服务器演示通常用 0.0.0.0。
+#   PORT             FastAPI 端口，默认 8010。
+#   DEVICE_MAP       Qwen 多卡切分方式，14B 推荐 auto。
+#   DTYPE            Qwen 权重精度，4090 推荐 bfloat16。
 
 set -euo pipefail
 
