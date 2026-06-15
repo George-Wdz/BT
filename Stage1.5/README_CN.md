@@ -14,7 +14,7 @@ Stage1.5 将 Stage1 产生的不规则 pass 级降雨结果聚合到规则时间
 默认 pass 输入：
 
 ```text
-/home/wdz/BT/Stage1/model/data/pass_dataset.index.csv
+/home/wdz/BT/Stage1/rain_retrieval/model/data/pass_dataset.index.csv
 ```
 
 正式训练 Stage2 时，应优先使用 Stage1 模型预测列，例如 `pred_pass_rainfall_mm`，而不是 oracle 标签。
@@ -87,7 +87,7 @@ bash scripts/build_default.sh
 ```bash
 python3 build_stage2_weather_table.py \
   --db-path /home/wdz/satellite_data/satellite_data.db \
-  --pass-index /home/wdz/BT/Stage1/model/data/pass_dataset.index.csv \
+  --pass-index /home/wdz/BT/Stage1/rain_retrieval/model/data/pass_dataset.index.csv \
   --freq 10min \
   --output /home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/datasets/weather/stage1_5_weather_10min.csv
 ```

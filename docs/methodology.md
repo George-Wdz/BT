@@ -354,10 +354,10 @@ The main implementation files are:
 
 | Component | Files |
 | --- | --- |
-| Stage 1 workflow | `Stage1/model/scripts/run_rain_retrieval_workflow.sh` |
-| Stage 1 dataset construction | `Stage1/model/data/preprocessing.py`, `Stage1/model/data/data_factory.py` |
-| Stage 1 model | `Stage1/model/models/patch_encoder_decoder.py` |
-| Stage 1 evaluation | `Stage1/model/scripts/evaluate_checkpoint_splits.py` |
+| Stage 1 workflow | `Stage1/rain_retrieval/model/scripts/run_rain_retrieval_workflow.sh` |
+| Stage 1 dataset construction | `Stage1/rain_retrieval/model/data/preprocessing.py`, `Stage1/rain_retrieval/model/data/data_factory.py` |
+| Stage 1 model | `Stage1/rain_retrieval/model/models/patch_encoder_decoder.py` |
+| Stage 1 evaluation | `Stage1/rain_retrieval/model/scripts/evaluate_checkpoint_splits.py` |
 | Visual LoRA adapter | `MoE/lora-moe/src/lora_moe/components.py`, `MoE/lora-moe/src/lora_moe/train/vision_weather_lora.py` |
 | Stage 1.5 bridge | `Stage1.5/build_stage2_weather_table.py` |
 | Stage 2 forecasting | `Stage2/GPT4TS/Long-term_Forecasting/models/GPT4TS.py` |

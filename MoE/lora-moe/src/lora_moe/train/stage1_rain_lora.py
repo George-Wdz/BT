@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stage1-checkpoint-dir",
         default=(
-            "/home/wdz/BT/Stage1/model/checkpoints/"
+            "/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/"
             "pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/"
             "stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0"
         ),
@@ -64,7 +64,8 @@ def build_system_prompt() -> str:
     return (
         "<|im_start|>system\n"
         "你是卫星链路降雨反演助手。请根据用户给出的过境元信息和卫星链路反演专家表示，"
-        "用中文给出本次卫星过境的降雨量。回答要包含卫星ID、过境起止时间和反演结论，"
+        "用中文给出本次卫星过境的降雨量。回答要包含卫星ID、过境起止时间和反演结论。"
+        "不要展开推理依据，不要补充没有依据的天气描述。"
         "不要提到 token、编码器、LoRA、特征向量或模型内部实现。\n"
         "<|im_end|>\n"
     )

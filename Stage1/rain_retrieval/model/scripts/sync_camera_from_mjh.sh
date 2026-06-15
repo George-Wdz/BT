@@ -4,7 +4,7 @@ set -euo pipefail
 REMOTE_USER="${REMOTE_USER:-mjh}"
 REMOTE_HOST="${REMOTE_HOST:-192.168.1.94}"
 REMOTE_DIR="${REMOTE_DIR:-/home/mjh/WorkSpace/Weather-Platform/backend/camera}"
-LOCAL_DIR="${LOCAL_DIR:-/home/wdz/BT/Stage1/data/camera}"
+LOCAL_DIR="${LOCAL_DIR:-/home/wdz/BT/Stage1/rain_retrieval/data/camera}"
 SSH_KEY="${SSH_KEY:-/home/wdz/.ssh/id_rsa}"
 LOCK_FILE="${LOCK_FILE:-/tmp/wdz_camera_pull.lock}"
 MODE="${MODE:-latest}"  # latest or all

@@ -20,7 +20,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 RUN_TS=${RUN_TS:-$(date +"%Y%m%d_%H%M%S")}
-IMAGE_LABEL_CSV=${IMAGE_LABEL_CSV:-/home/wdz/BT/Stage1/data/camera_labels/latest_weather_labels_slim.csv}
+IMAGE_LABEL_CSV=${IMAGE_LABEL_CSV:-/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv}
 PASS_DATASET_DEFAULT="$ROOT/data/pass_dataset_link4_img_latest.npz"
 
 COMMON_EXTRA=${EXTRA_SET:-}

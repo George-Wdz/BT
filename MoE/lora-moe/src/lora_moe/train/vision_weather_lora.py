@@ -17,10 +17,10 @@ from lora_moe.datasets import WeatherInstructionDataset, weather_collate
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train vision-weather projector + Qwen LoRA.")
     parser.add_argument("--model-dir", default="/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct")
-    parser.add_argument("--split-root", default="/home/wdz/LLaMA-Factory/leo_model/data/vision_weather/split")
+    parser.add_argument("--split-root", default="/home/wdz/BT/Stage1/vision_weather/data/split")
     parser.add_argument(
         "--vision-weights",
-        default="/home/wdz/LLaMA-Factory/leo_model/vision/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt",
+        default="/home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt",
     )
     parser.add_argument("--output-dir", default="/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_v1")
     parser.add_argument("--device-map", default="auto")

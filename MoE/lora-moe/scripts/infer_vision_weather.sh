@@ -30,7 +30,8 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 PYTHON=${PYTHON:-python}
 MODEL_DIR=${MODEL_DIR:-/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct}
 OUTPUT_DIR=${OUTPUT_DIR:-/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1}
-SPLIT_ROOT=${SPLIT_ROOT:-/home/wdz/LLaMA-Factory/leo_model/data/vision_weather/split}
+SPLIT_ROOT=${SPLIT_ROOT:-/home/wdz/BT/Stage1/vision_weather/data/split}
+VISION_WEIGHTS=${VISION_WEIGHTS:-/home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt}
 DEVICE_MAP=${DEVICE_MAP:-auto}
 DTYPE=${DTYPE:-bfloat16}
 SPLIT=${SPLIT:-test}
@@ -44,6 +45,7 @@ declare -a CMD=(
   --model-dir "$MODEL_DIR"
   --output-dir "$OUTPUT_DIR"
   --split-root "$SPLIT_ROOT"
+  --vision-weights "$VISION_WEIGHTS"
   --device-map "$DEVICE_MAP"
   --dtype "$DTYPE"
   --split "$SPLIT"

@@ -20,6 +20,10 @@ LABEL_TEXT = {
     "cloudy": "多云",
     "rain": "下雨",
 }
+DEFAULT_VISION_WEIGHTS = (
+    "/home/wdz/BT/Stage1/vision_weather/weights/"
+    "20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,8 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--projector-path", default="")
     parser.add_argument("--output-dir", default="/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1")
     parser.add_argument("--use-best", action="store_true")
-    parser.add_argument("--vision-weights", default="")
-    parser.add_argument("--split-root", default="/home/wdz/LLaMA-Factory/leo_model/data/vision_weather/split")
+    parser.add_argument("--vision-weights", default=DEFAULT_VISION_WEIGHTS)
+    parser.add_argument("--split-root", default="/home/wdz/BT/Stage1/vision_weather/data/split")
     parser.add_argument("--split", default="test", choices=["train", "val", "test"])
     parser.add_argument("--image", default="")
     parser.add_argument("--image-dir", default="")
@@ -242,4 +246,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

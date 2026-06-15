@@ -43,7 +43,7 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 
 PYTHON=${PYTHON:-python}
 MODEL_DIR=${MODEL_DIR:-/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct}
-STAGE1_CHECKPOINT_DIR=${STAGE1_CHECKPOINT_DIR:-/home/wdz/BT/Stage1/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0}
+STAGE1_CHECKPOINT_DIR=${STAGE1_CHECKPOINT_DIR:-/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0}
 PASS_DATASET_PATH=${PASS_DATASET_PATH:-}
 OUTPUT_DIR=${OUTPUT_DIR:-/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_smoke}
 

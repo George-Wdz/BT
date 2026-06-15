@@ -9,7 +9,7 @@
 #   OUTPUT_DIR       视觉 A1B1 训练输出目录，里面应有 adapter/projector.pt 或 best/adapter/best/projector.pt。
 #   ADAPTER_DIR      手动指定 LoRA adapter 目录；设置后覆盖 OUTPUT_DIR 自动推断。
 #   PROJECTOR_PATH   手动指定 projector.pt；设置后覆盖 OUTPUT_DIR 自动推断。
-#   VISION_WEIGHTS   手动指定 WeatherClassifier 权重；默认读取 projector.pt 中记录的路径。
+#   VISION_WEIGHTS   手动指定 WeatherClassifier 权重；默认使用 Stage1/vision_weather 内当前权重。
 #   SERVE_HOST       FastAPI 监听地址。服务器演示通常用 0.0.0.0。
 #   PORT             FastAPI 端口，默认 8010。
 #   DEVICE_MAP       Qwen 多卡切分方式，14B 推荐 auto。
@@ -28,6 +28,7 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 PYTHON=${PYTHON:-python}
 MODEL_DIR=${MODEL_DIR:-/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct}
 OUTPUT_DIR=${OUTPUT_DIR:-/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1}
+VISION_WEIGHTS=${VISION_WEIGHTS:-/home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt}
 # Do not use $HOST here: conda/build environments may set HOST=x86_64-conda-linux-gnu.
 SERVE_HOST=${SERVE_HOST:-0.0.0.0}
 PORT=${PORT:-8010}
@@ -42,6 +43,7 @@ declare -a CMD=(
   --port "$PORT"
   --device-map "$DEVICE_MAP"
   --dtype "$DTYPE"
+  --vision-weights "$VISION_WEIGHTS"
   --use-best
 )
 
@@ -50,9 +52,6 @@ if [ -n "${ADAPTER_DIR:-}" ]; then
 fi
 if [ -n "${PROJECTOR_PATH:-}" ]; then
   CMD+=(--projector-path "$PROJECTOR_PATH")
-fi
-if [ -n "${VISION_WEIGHTS:-}" ]; then
-  CMD+=(--vision-weights "$VISION_WEIGHTS")
 fi
 
 echo "Command: ${CMD[*]} $*"

@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-本目录保存项目自有的参数高效多模态适配代码。它是 LoRA-MoE 路线的早期原型：当前包含 `vision_weather` 专家和 `stage1_rain` 专家，分别用外部小模型编码器生成 soft tokens，再输入 Qwen 语言模型。
+本目录保存项目自有的参数高效多模态适配代码。它是 LoRA-MoE 路线的早期原型：当前包含 `vision_weather` 专家和 `stage1_rain` 专家，分别用仓库内冻结编码器生成 soft tokens，再输入 Qwen 语言模型。
 
 ## 范围
 
@@ -10,9 +10,9 @@
 | --- | --- |
 | 当前任务 | 相机图像天气识别；Stage1 卫星链路降雨反演 |
 | 视觉类别 | `sunny`、`cloudy`、`rain` |
-| 视觉编码器 | 冻结的 `WeatherClassifier` encoder，对应 A1B1 |
+| 视觉编码器 | 冻结的 `Stage1/vision_weather/WeatherClassifier` encoder，对应 A1B1 |
 | Stage1 编码器 | 冻结的 `PatchEncoderDecoder` 反演模型，对应 A2B2 |
-| Projector | 可训练 MLP，将外部编码器特征映射为 soft tokens |
+| Projector | 可训练 MLP，将冻结编码器特征映射为 soft tokens |
 | 语言模型 | Qwen2.5-14B-Instruct，除 LoRA 外冻结 |
 | LoRA 注入层 | `q_proj`、`v_proj` |
 
@@ -119,7 +119,7 @@ conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 默认 Stage1 checkpoint：
 
 ```text
-/home/wdz/BT/Stage1/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0
+/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0
 ```
 
 如果之后 Stage1 小模型重训好了，请通过 `STAGE1_CHECKPOINT_DIR=/path/to/new/checkpoint_dir` 指向新权重，并用新的 `OUTPUT_DIR` 重新训练 A2B2。

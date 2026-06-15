@@ -9,7 +9,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-STAGE1_MODEL_ROOT = Path("/home/wdz/BT/Stage1/model")
+STAGE1_MODEL_ROOT = Path("/home/wdz/BT/Stage1/rain_retrieval/model")
 if str(STAGE1_MODEL_ROOT) not in sys.path:
     sys.path.insert(0, str(STAGE1_MODEL_ROOT))
 
@@ -154,17 +154,6 @@ def build_stage1_metadata_prompt(
     )
 
 
-def _rain_probability_basis(rain_probability: float | None) -> str:
-    if rain_probability is None:
-        return "依据是链路反演信号的整体变化。"
-    prob = float(rain_probability)
-    if prob < 0.2:
-        return "依据是链路降雨信号较弱，降雨可能性较低。"
-    if prob < 0.5:
-        return "依据是链路中存在一定降雨扰动，但整体强度仍偏弱。"
-    return "依据是链路中出现较明显的降雨扰动。"
-
-
 def build_stage1_rain_answer(
     *,
     satellite_id: int,
@@ -179,25 +168,24 @@ def build_stage1_rain_answer(
     display_rain = normalize_stage1_rainfall(pred_rainfall_mm, no_rain_threshold)
     rain_text = format_stage1_rainfall(pred_rainfall_mm, no_rain_threshold)
     level = stage1_rain_level(pred_rainfall_mm, no_rain_threshold)
-    basis = _rain_probability_basis(rain_probability)
 
     templates = {
         "dry": [
-            "卫星{satellite_id}本次过境时间为{pass_start}至{pass_end}，采样点数为{points}。链路反演结果显示无明显降雨，本次降雨量记为0毫米。{basis}",
-            "最新过境卫星为{satellite_id}，时间窗口为{pass_start}至{pass_end}。卫星链路反演未检测到有效降雨信号，估计降雨量为0毫米。{basis}",
-            "根据卫星链路反演专家，卫星{satellite_id}在{pass_start}至{pass_end}过境期间降雨信号很弱，估计降雨量为0毫米。{basis}",
+            "卫星{satellite_id}本次过境时间为{pass_start}至{pass_end}，采样点数为{points}。链路反演结果显示无明显降雨，本次降雨量记为0毫米。",
+            "最新过境卫星为{satellite_id}，时间窗口为{pass_start}至{pass_end}。卫星链路反演未检测到有效降雨信号，估计降雨量为0毫米。",
+            "根据卫星链路反演专家，卫星{satellite_id}在{pass_start}至{pass_end}过境期间降雨信号很弱，估计降雨量为0毫米。",
         ],
         "weak": [
-            "卫星{satellite_id}本次过境时间为{pass_start}至{pass_end}，链路反演显示存在微弱降雨信号，估计降雨量约为{rain_text}毫米。{basis}",
-            "最新过境卫星为{satellite_id}，采样点数为{points}。链路反演结果显示降雨量约为{rain_text}毫米，属于微弱降雨信号。{basis}",
+            "卫星{satellite_id}本次过境时间为{pass_start}至{pass_end}，链路反演显示存在微弱降雨信号，估计降雨量约为{rain_text}毫米。",
+            "最新过境卫星为{satellite_id}，采样点数为{points}。链路反演结果显示降雨量约为{rain_text}毫米，属于微弱降雨信号。",
         ],
         "light": [
-            "根据卫星链路反演专家，卫星{satellite_id}在{pass_start}至{pass_end}的过境片段对应小雨信号，估计降雨量约为{rain_text}毫米。{basis}",
-            "卫星{satellite_id}最新过境窗口为{pass_start}至{pass_end}，链路反演降雨量约为{rain_text}毫米，可判断为小雨量级。{basis}",
+            "根据卫星链路反演专家，卫星{satellite_id}在{pass_start}至{pass_end}的过境片段对应小雨信号，估计降雨量约为{rain_text}毫米。",
+            "卫星{satellite_id}最新过境窗口为{pass_start}至{pass_end}，链路反演降雨量约为{rain_text}毫米，可判断为小雨量级。",
         ],
         "moderate": [
-            "链路反演结果显示，卫星{satellite_id}于{pass_start}至{pass_end}过境期间存在较明显降雨，估计降雨量约为{rain_text}毫米。{basis}",
-            "最新卫星{satellite_id}过境片段显示明显降雨信号，时间为{pass_start}至{pass_end}，反演降雨量约为{rain_text}毫米。{basis}",
+            "链路反演结果显示，卫星{satellite_id}于{pass_start}至{pass_end}过境期间存在较明显降雨，估计降雨量约为{rain_text}毫米。",
+            "最新卫星{satellite_id}过境片段显示明显降雨信号，时间为{pass_start}至{pass_end}，反演降雨量约为{rain_text}毫米。",
         ],
     }
     choices = templates[level]
@@ -208,7 +196,6 @@ def build_stage1_rain_answer(
         pass_end=pass_end,
         points=points,
         rain_text=rain_text,
-        basis=basis,
         display_rain=display_rain,
     )
 

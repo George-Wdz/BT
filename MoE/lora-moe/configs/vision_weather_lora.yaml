@@ -1,6 +1,6 @@
 model_dir: /home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct
-split_root: /home/wdz/LLaMA-Factory/leo_model/data/vision_weather/split
-vision_weights: /home/wdz/LLaMA-Factory/leo_model/vision/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt
+split_root: /home/wdz/BT/Stage1/vision_weather/data/split
+vision_weights: /home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt
 output_dir: /home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_v1
 
 class_names:

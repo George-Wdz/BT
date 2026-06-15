@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-This directory contains project-specific code for parameter-efficient multimodal adaptation. It is an early LoRA-MoE prototype: the current implementation includes the `vision_weather` expert and the `stage1_rain` expert. Both use frozen external encoders to produce soft tokens for a Qwen language model.
+This directory contains project-specific code for parameter-efficient multimodal adaptation. It is an early LoRA-MoE prototype: the current implementation includes the `vision_weather` expert and the `stage1_rain` expert. Both use frozen project encoders to produce soft tokens for a Qwen language model.
 
 ## Scope
 
@@ -10,9 +10,9 @@ This directory contains project-specific code for parameter-efficient multimodal
 | --- | --- |
 | Current tasks | Camera-image weather recognition; Stage1 satellite-link rainfall retrieval |
 | Vision classes | `sunny`, `cloudy`, `rain` |
-| Vision encoder | Frozen `WeatherClassifier` encoder, corresponding to A1B1 |
+| Vision encoder | Frozen `Stage1/vision_weather/WeatherClassifier` encoder, corresponding to A1B1 |
 | Stage1 encoder | Frozen `PatchEncoderDecoder` rainfall retrieval model, corresponding to A2B2 |
-| Projector | Trainable MLP that maps external encoder features to soft tokens |
+| Projector | Trainable MLP that maps frozen encoder features to soft tokens |
 | Language model | Qwen2.5-14B-Instruct, frozen except LoRA parameters |
 | LoRA target modules | `q_proj`, `v_proj` |
 
@@ -44,7 +44,7 @@ satellite pass features
   -> Chinese rainfall response
 ```
 
-Only the projector and LoRA parameters are trained. The external encoders and the base language model remain frozen.
+Only the projector and LoRA parameters are trained. The Stage1 encoders and the base language model remain frozen.
 
 The first Stage1 training target is intentionally narrow: Qwen learns to produce short Chinese rainfall answers such as "the rainfall for this satellite pass is about X mm" from Stage1 tokens. The answer target uses the frozen Stage1 model prediction instead of the rain-gauge ground-truth label, so training and online inference stay consistent. The rain-gauge resolution is handled with `NO_RAIN_THRESHOLD=0.06`; predictions below this threshold are expressed as no rain / 0 mm. This does not mean the Stage1 model itself is already accurate enough. After the Stage1 checkpoint improves, retrain the corresponding projector and A2B2 LoRA.
 
@@ -121,7 +121,7 @@ conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 Default Stage1 checkpoint:
 
 ```text
-/home/wdz/BT/Stage1/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0
+/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0
 ```
 
 After retraining a better Stage1 model, set `STAGE1_CHECKPOINT_DIR=/path/to/new/checkpoint_dir` and train A2B2 again with a new `OUTPUT_DIR`.

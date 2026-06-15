@@ -27,8 +27,8 @@ db_backups/
 *.npz
 *.parquet
 *.xlsx
-Stage1/data/
-Stage1/model/data/datasets/
+Stage1/rain_retrieval/data/
+Stage1/rain_retrieval/model/data/datasets/
 Stage2/GPT4TS/Long-term_Forecasting/datasets/
 
 # Images and media
@@ -46,7 +46,7 @@ Stage2/GPT4TS/Long-term_Forecasting/datasets/
 *.ckpt
 checkpoint*/
 checkpoints*/
-Stage1/model/checkpoints*/
+Stage1/rain_retrieval/model/checkpoints*/
 Stage2/GPT4TS/Long-term_Forecasting/checkpoints/
 MoE/models/
 MoE/lora-moe/outputs/
@@ -54,13 +54,13 @@ MoE/lora-moe/outputs/
 # Logs, experiment outputs, and generated caches
 *.log
 logs/
-Stage1/logs/
-Stage1/model/logs/
+Stage1/rain_retrieval/logs/
+Stage1/rain_retrieval/model/logs/
 MoE/lora-moe/logs/
-Stage1/analysis/**/runs/
-Stage1/analysis/**/legacy_*/
-Stage1/paper/
-Stage1/paper/figures/
+Stage1/rain_retrieval/analysis/**/runs/
+Stage1/rain_retrieval/analysis/**/legacy_*/
+Stage1/rain_retrieval/paper/
+Stage1/rain_retrieval/paper/figures/
 wandb/
 tensorboard/
 runs/
@@ -74,3 +74,10 @@ Stage2/GPT4TS/Long-term_Forecasting/gpt2/.cache/
 # External repositories kept locally
 Stage2/GPT4TS/
 MoE/llama-moe/
+
+# Committed Stage1 vision classifier artifact used by LoRA-MoE defaults
+!Stage1/vision_weather/logs/
+!Stage1/vision_weather/logs/20260605_182036_weather_cls_more_cloudy_gpu_30ep.csv
+!Stage1/vision_weather/logs/20260605_184443_eval.csv
+!Stage1/vision_weather/weights/
+!Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt

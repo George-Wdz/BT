@@ -87,7 +87,7 @@ if [ -n "${EXTRA_SET-}" ]; then
 fi
 
 if [ "${REBUILD_CACHE:-0}" = "1" ]; then
-    CACHE_PATH=${PASS_DATASET_PATH:-/home/wdz/BT/Stage1/model/data/pass_dataset.npz}
+    CACHE_PATH=${PASS_DATASET_PATH:-/home/wdz/BT/Stage1/rain_retrieval/model/data/pass_dataset.npz}
     rm -f "$CACHE_PATH"
     echo "Removed cached pass dataset: $CACHE_PATH"
 fi

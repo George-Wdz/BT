@@ -23,6 +23,10 @@ from lora_moe.train.vision_weather_lora import dtype_from_name
 
 DEFAULT_MODEL_DIR = "/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct"
 DEFAULT_OUTPUT_DIR = "/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1"
+DEFAULT_VISION_WEIGHTS = (
+    "/home/wdz/BT/Stage1/vision_weather/weights/"
+    "20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt"
+)
 LABEL_ZH = {
     "sunny": "晴天",
     "cloudy": "多云",
@@ -410,7 +414,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--adapter-dir", default="")
     parser.add_argument("--projector-path", default="")
-    parser.add_argument("--vision-weights", default="")
+    parser.add_argument("--vision-weights", default=DEFAULT_VISION_WEIGHTS)
     parser.add_argument("--use-best", action="store_true", default=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8010)

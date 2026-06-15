@@ -14,7 +14,7 @@ Stage1.5 converts irregular Stage1 pass-level rainfall outputs into regular time
 Default pass input:
 
 ```text
-/home/wdz/BT/Stage1/model/data/pass_dataset.index.csv
+/home/wdz/BT/Stage1/rain_retrieval/model/data/pass_dataset.index.csv
 ```
 
 For formal Stage2 training, prefer Stage1 model predictions such as `pred_pass_rainfall_mm` instead of oracle labels.
@@ -87,7 +87,7 @@ Direct Python call:
 ```bash
 python3 build_stage2_weather_table.py \
   --db-path /home/wdz/satellite_data/satellite_data.db \
-  --pass-index /home/wdz/BT/Stage1/model/data/pass_dataset.index.csv \
+  --pass-index /home/wdz/BT/Stage1/rain_retrieval/model/data/pass_dataset.index.csv \
   --freq 10min \
   --output /home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/datasets/weather/stage1_5_weather_10min.csv
 ```

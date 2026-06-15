@@ -7,15 +7,16 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-LLAMA_FACTORY_ROOT = Path("/home/wdz/LLaMA-Factory")
-if str(LLAMA_FACTORY_ROOT) not in sys.path:
-    sys.path.insert(0, str(LLAMA_FACTORY_ROOT))
+BT_ROOT = Path(__file__).resolve().parents[4]
+STAGE1_ROOT = BT_ROOT / "Stage1"
+if str(STAGE1_ROOT) not in sys.path:
+    sys.path.insert(0, str(STAGE1_ROOT))
 
-STAGE1_MODEL_ROOT = Path("/home/wdz/BT/Stage1/model")
+STAGE1_MODEL_ROOT = STAGE1_ROOT / "rain_retrieval" / "model"
 if str(STAGE1_MODEL_ROOT) not in sys.path:
     sys.path.insert(0, str(STAGE1_MODEL_ROOT))
 
-from leo_model.vision.models import WeatherClassifier  # noqa: E402
+from vision_weather.models import WeatherClassifier  # noqa: E402
 from models.patch_encoder_decoder import PatchEncoderDecoder  # noqa: E402
 
 

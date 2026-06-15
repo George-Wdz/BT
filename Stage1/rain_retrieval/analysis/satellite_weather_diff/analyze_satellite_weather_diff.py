@@ -229,11 +229,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--npz",
-        default="/home/wdz/BT/Stage1/model/data/pass_dataset_link4_img_cls.npz",
+        default="/home/wdz/BT/Stage1/rain_retrieval/model/data/pass_dataset_link4_img_cls.npz",
     )
     parser.add_argument(
         "--out-dir",
-        default="/home/wdz/BT/Stage1/analysis/satellite_weather_diff",
+        default="/home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff",
     )
     parser.add_argument("--rain-threshold", type=float, default=1e-6)
     args = parser.parse_args()

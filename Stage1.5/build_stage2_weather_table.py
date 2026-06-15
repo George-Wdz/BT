@@ -20,7 +20,7 @@ import pandas as pd
 
 
 DEFAULT_DB = "/home/wdz/satellite_data/satellite_data.db"
-DEFAULT_PASS_INDEX = "/home/wdz/BT/Stage1/model/data/pass_dataset.index.csv"
+DEFAULT_PASS_INDEX = "/home/wdz/BT/Stage1/rain_retrieval/model/data/pass_dataset.index.csv"
 DEFAULT_OUTPUT = (
     "/home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/"
     "datasets/weather/stage1_5_weather_10min.csv"

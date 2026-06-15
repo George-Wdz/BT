@@ -29,7 +29,7 @@ PYTHON=${PYTHON:-python}
 MODEL_DIR=${MODEL_DIR:-/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct}
 OUTPUT_DIR=${OUTPUT_DIR:-/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1}
 SENSOR_DB_PATH=${SENSOR_DB_PATH:-/home/wdz/satellite_data/satellite_data.db}
-IMAGE_WEATHER_CSV=${IMAGE_WEATHER_CSV:-/home/wdz/BT/Stage1/data/camera_labels/latest_weather_labels_slim.csv}
+IMAGE_WEATHER_CSV=${IMAGE_WEATHER_CSV:-/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv}
 IMAGE_TOLERANCE=${IMAGE_TOLERANCE:-10min}
 
 # Do not use $HOST here: conda/build environments may set HOST=x86_64-conda-linux-gnu.

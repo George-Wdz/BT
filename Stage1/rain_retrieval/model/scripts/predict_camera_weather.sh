@@ -2,12 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LLAMA_FACTORY_ROOT="${LLAMA_FACTORY_ROOT:-/home/wdz/LLaMA-Factory}"
-VISION_DIR="${VISION_DIR:-$LLAMA_FACTORY_ROOT/leo_model/vision}"
-INPUT_DIR="${INPUT_DIR:-/home/wdz/BT/Stage1/data/camera}"
-OUTPUT_DIR="${OUTPUT_DIR:-/home/wdz/BT/Stage1/data/camera_labels}"
+RAIN_RETRIEVAL_ROOT="$(cd "$ROOT/.." && pwd)"
+STAGE1_ROOT="$(cd "$ROOT/../.." && pwd)"
+VISION_DIR="${VISION_DIR:-$STAGE1_ROOT/vision_weather}"
+INPUT_DIR="${INPUT_DIR:-$RAIN_RETRIEVAL_ROOT/data/camera}"
+OUTPUT_DIR="${OUTPUT_DIR:-$RAIN_RETRIEVAL_ROOT/data/camera_labels}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-WEIGHTS="${WEIGHTS:-}"
+WEIGHTS="${WEIGHTS:-$VISION_DIR/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt}"
 BATCH_SIZE="${BATCH_SIZE:-64}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
 

@@ -3,7 +3,7 @@
 
 data:
   db_path: "/home/wdz/satellite_data/satellite_data.db"
-  pass_dataset_path: "/home/wdz/BT/Stage1/model/data/pass_dataset_link4_img_latest.npz"
+  pass_dataset_path: "/home/wdz/BT/Stage1/rain_retrieval/model/data/pass_dataset_link4_img_latest.npz"
   data_split: [0.7, 0.2, 0.1]     # train/val/test 比例（按 pass 起始时间排序后顺序切）
   val_strategy: "stratified_before_test"  # test 保持最后时间段；train/val 在 test 前按雨/无雨分层
   num_workers: 4
@@ -11,7 +11,7 @@ data:
   rain_filter_min: 0.0             # >0 时只保留 pass_rainfall_mm 大于该阈值的 pass
   satellite_filter_ids: []         # 非空时只保留指定 satelliteId，例如 [1558] 或 [264,272]
 
-checkpoints: "/home/wdz/BT/Stage1/model/checkpoints_stage1_rain_retrieval/"
+checkpoints: "/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints_stage1_rain_retrieval/"
 
 features:
   link:  # phy_data
@@ -33,7 +33,7 @@ features:
 
 image_weather:
   enabled: true
-  csv_path: "/home/wdz/BT/Stage1/data/camera_labels/latest_weather_labels_slim.csv"
+  csv_path: "/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv"
   tolerance: "10min"
 
 dry_baseline:

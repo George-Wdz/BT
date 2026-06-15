@@ -29,7 +29,7 @@ from lora_moe.datasets import (
 from lora_moe.train.stage1_rain_lora import dtype_from_name
 
 
-STAGE1_MODEL_ROOT = Path("/home/wdz/BT/Stage1/model")
+STAGE1_MODEL_ROOT = Path("/home/wdz/BT/Stage1/rain_retrieval/model")
 if str(STAGE1_MODEL_ROOT) not in sys.path:
     sys.path.insert(0, str(STAGE1_MODEL_ROOT))
 
@@ -55,7 +55,7 @@ from data.preprocessing import (  # noqa: E402
 DEFAULT_MODEL_DIR = "/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct"
 DEFAULT_OUTPUT_DIR = "/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1"
 DEFAULT_SENSOR_DB_PATH = "/home/wdz/satellite_data/satellite_data.db"
-DEFAULT_IMAGE_WEATHER_CSV = "/home/wdz/BT/Stage1/data/camera_labels/latest_weather_labels_slim.csv"
+DEFAULT_IMAGE_WEATHER_CSV = "/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv"
 
 
 class GenerateRequest(BaseModel):
@@ -694,6 +694,7 @@ class Stage1RainServiceRunner:
             "<|im_start|>system\n"
             "你是卫星链路降雨反演助手。你会收到最新过境元信息和卫星链路反演专家表示。"
             "请基于专家表示回答本次过境降雨量，回答要包含卫星ID、过境起止时间和反演结论。"
+            "不要展开推理依据，不要补充没有依据的天气描述。"
             "不要提到 token、编码器、LoRA、特征向量或模型内部实现。除非用户明确要求英文，否则使用中文。\n"
             "<|im_end|>\n"
             "<|im_start|>user\n"
