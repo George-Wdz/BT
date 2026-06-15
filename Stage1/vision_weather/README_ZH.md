@@ -1,7 +1,6 @@
 # Stage1 视觉天气分类模型
 
-本目录实现了 Stage1 使用的轻量视觉天气分类模块，已经从外部
-`/home/wdz/LLaMA-Factory/leo_model/vision` 迁入 BT 仓库，后续不再依赖外部工程路径。
+本目录实现了 Stage1 使用的轻量视觉天气分类模块，已经迁入 BT 仓库，后续不再依赖外部工程路径。
 
 - 源码：`/home/wdz/BT/Stage1/vision_weather`
 - 默认权重：`weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt`
@@ -44,7 +43,7 @@
 - `train_weather_classifier.py`: 训练脚本（只负责训练过程）
 - `eval_weather_classifier.py`: 独立验证脚本（可指定任意权重）
 
-## 训练产物目录（整理后）
+## 训练产物目录
 
 训练产物按时间戳命名，统一落在 `logs/` 与 `weights/`：
 
@@ -60,16 +59,11 @@ Stage1/vision_weather/
 说明：
 - `logs` 训练阶段默认只保存一个 CSV（epoch 的 train/val loss 与 acc）。
 - `weights` 只保存训练得到的最佳模型权重（best model）。
-
-历史目录说明（便于你当前目录理解）：
-- `legacy_outputs`: 旧版 `outputs/` 迁移过来的历史结果。
-- `path_check`: 之前用于检查路径解析是否正确的临时运行结果。
-- `structure_check`: 之前用于检查 logs/weights 目录结构是否生效的临时运行结果。
-- 上述历史目录现已归档到 `logs/_archive/` 与 `weights/_archive/`，不影响当前新流程。
+- 当前默认权重 `weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt` 已纳入仓库，用于 Stage1 图像标签导出和 LoRA-MoE 视觉专家复现。
 
 ## 数据准备
 
-把图像按类别放在：
+本地项目目录可直接保存训练图片，但图片不推送到 GitHub。当前推荐结构：
 
 ```text
 Stage1/vision_weather/data/raw/
@@ -77,6 +71,8 @@ Stage1/vision_weather/data/raw/
   cloudy/
   rain/
 ```
+
+当前本地 `raw/` 已从历史视觉分类目录同步过来，类别数量为：`sunny=8641`、`cloudy=8152`、`rain=1030`。`split/` 中保存了当前训练/验证/测试划分。
 
 当前阶段优先训练分类能力，**不要求文件名携带时间戳**。
 如后续需要与链路/环境时序对齐，可在训练时加 `--parse-timestamp` 开启从文件名解析 `timestamp_unix`。
@@ -92,13 +88,13 @@ python Stage1/vision_weather/train_weather_classifier.py \
   --epochs 20 \
   --batch-size 32 \
   --val-ratio 0.1
+```
 
 说明：
 - 脚本会按类别**分层随机切分** train/val。
 - 每个 epoch 都会在 `val` 集上做验证（即日志中的 `val_loss/val_acc`）。
 - 训练日志保存为 `logs/<timestamp>_<run_name>.csv`。
 - 最佳权重保存为 `weights/<timestamp>_<run_name>_best_model.pt`。
-```
 
 ## 验证命令（独立验证，可换新验证集）
 
@@ -109,11 +105,11 @@ python Stage1/vision_weather/eval_weather_classifier.py \
   --weights Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt \
   --class-names sunny,cloudy,rain \
   --save-csv
+```
 
 说明：
 - `--weights` 可指定任意权重文件；不传则自动选 `weights/` 下最新文件。
 - 验证默认在终端输出 overall + per-class 指标；`--save-csv` 可额外保存一份评估 CSV。
-```
 
 ## 生成自动标签（对新图片批量推理）
 

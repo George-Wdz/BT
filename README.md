@@ -4,13 +4,13 @@
 
 This repository contains project-specific code and documentation for rainfall retrieval and forecasting from LEO satellite-link observations, ground weather data, camera-derived weather cues, and time-series forecasting models.
 
-The repository is a lightweight code backup. Raw data, database snapshots, model weights, checkpoints, logs, and third-party reproduced repositories are kept outside this GitHub repository.
+The repository is a lightweight code backup. Raw data, database snapshots, large model weights, checkpoints, logs, and third-party reproduced repositories are kept outside this GitHub repository. The current lightweight Stage1 vision-weather classifier weight is included as a small reproducibility artifact.
 
 ## Project Structure
 
 | Path | Role |
 | --- | --- |
-| `Stage1/` | Pass-level rainfall retrieval from satellite-link observations. |
+| `Stage1/` | Stage1 components: `vision_weather/` for camera-image weather classification and `rain_retrieval/` for pass-level rainfall retrieval. |
 | `Stage1.5/` | Bridge from irregular pass-level retrievals to regular Stage2 weather tables. |
 | `MoE/lora-moe/` | Project-specific LoRA/soft-token prototype for visual weather adaptation. |
 | `docs/` | Methodology draft and rendered architecture figures. |
@@ -45,12 +45,12 @@ Keep the original licenses, citations, and installation instructions from each u
 
 ## Data and Artifacts
 
-The following content is not included in this repository:
+The following content is generally not included in this repository:
 
 - SQLite databases and backups
 - raw camera images
 - generated CSV/NPZ datasets
-- model weights and checkpoints
+- model weights and checkpoints, except the current lightweight `Stage1/vision_weather` default classifier weight
 - logs and local caches
 - downloaded third-party repositories
 

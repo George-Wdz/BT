@@ -60,7 +60,7 @@ MoE/lora-moe/
     serve/
 ```
 
-生成的 adapter、projector 权重、日志和 checkpoint 暂不纳入本仓库。
+生成的 adapter、projector 权重、日志和 checkpoint 暂不纳入本仓库。轻量 `Stage1/vision_weather` 默认分类权重已纳入仓库，因为视觉专家本地复现需要匹配的编码器 checkpoint。
 
 ## 训练
 
@@ -211,7 +211,7 @@ Stage1 A2B2 服务启动时会持久化加载：
 以下产物暂不纳入本仓库：
 
 - Qwen 基座权重；
-- WeatherClassifier 权重；
+- 除当前默认 `Stage1/vision_weather` checkpoint 外的新 WeatherClassifier 权重；
 - Stage1 checkpoint 和 `meta.pt`；
 - Stage1 NPZ 数据集；
 - 在线卫星数据库；

@@ -62,7 +62,7 @@ MoE/lora-moe/
     serve/
 ```
 
-Generated adapters, projector weights, logs, and checkpoints are not committed to this repository.
+Generated adapters, projector weights, logs, and checkpoints are not committed to this repository. The lightweight default `Stage1/vision_weather` classifier weight is committed because the vision expert depends on the matching encoder checkpoint for local reproducibility.
 
 ## Training
 
@@ -215,7 +215,7 @@ Key online parameters:
 The following artifacts are not included in this repository:
 
 - Qwen base weights;
-- WeatherClassifier weights;
+- generated WeatherClassifier weights other than the current default `Stage1/vision_weather` checkpoint;
 - Stage1 checkpoints and `meta.pt`;
 - Stage1 NPZ datasets;
 - online satellite DB;

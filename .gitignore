@@ -29,6 +29,8 @@ db_backups/
 *.xlsx
 Stage1/rain_retrieval/data/
 Stage1/rain_retrieval/model/data/datasets/
+Stage1/vision_weather/data/raw/
+Stage1/vision_weather/data/split/
 Stage2/GPT4TS/Long-term_Forecasting/datasets/
 
 # Images and media
