@@ -9,7 +9,7 @@
 #   CUDA_VISIBLE_DEVICES     使用哪些 GPU。Qwen2.5-14B bf16 建议至少 2 张 4090，正式训练建议 4 张以上。
 #   MODEL_DIR                Qwen2.5-14B-Instruct 基座路径。保持 Instruct 版本以保留中文回答能力。
 #   STAGE1_CHECKPOINT_DIR    Stage1 反演模型 checkpoint 目录，必须包含 checkpoint.pth 和 meta.pt。
-#   PASS_DATASET_PATH        Stage1 NPZ 数据集路径。留空时使用 Stage1 meta.pt 里记录的数据集。
+#   PASS_DATASET_PATH        Stage1 NPZ 数据集路径。默认使用 Stage1/rain_retrieval 内 20260612_1116 数据集。
 #   OUTPUT_DIR               A2B2 LoRA adapter、Stage1 projector、训练参数保存目录。
 #   DEVICE_MAP               Qwen 多卡切分方式。14B 推荐 auto。
 #   DTYPE                    权重精度。4090 推荐 bfloat16。
@@ -43,8 +43,8 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 
 PYTHON=${PYTHON:-python}
 MODEL_DIR=${MODEL_DIR:-/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct}
-STAGE1_CHECKPOINT_DIR=${STAGE1_CHECKPOINT_DIR:-/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0}
-PASS_DATASET_PATH=${PASS_DATASET_PATH:-}
+STAGE1_CHECKPOINT_DIR=${STAGE1_CHECKPOINT_DIR:-/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_20260612_1116/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0}
+PASS_DATASET_PATH=${PASS_DATASET_PATH:-/home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260612_1116.npz}
 OUTPUT_DIR=${OUTPUT_DIR:-/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_smoke}
 
 DEVICE_MAP=${DEVICE_MAP:-auto}

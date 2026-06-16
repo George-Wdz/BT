@@ -53,9 +53,18 @@ from data.preprocessing import (  # noqa: E402
 
 
 DEFAULT_MODEL_DIR = "/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct"
-DEFAULT_OUTPUT_DIR = "/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1"
+DEFAULT_OUTPUT_DIR = "/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v2"
 DEFAULT_SENSOR_DB_PATH = "/home/wdz/satellite_data/satellite_data.db"
 DEFAULT_IMAGE_WEATHER_CSV = "/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv"
+DEFAULT_STAGE1_CHECKPOINT_DIR = (
+    "/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/"
+    "pass_dataset_rain_retrieval_20260612_1116/"
+    "stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0"
+)
+DEFAULT_STAGE1_PASS_DATASET = (
+    "/home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/"
+    "pass_dataset_rain_retrieval_20260612_1116.npz"
+)
 
 
 class GenerateRequest(BaseModel):
@@ -452,6 +461,8 @@ class Stage1RainServiceRunner:
         output_dir: str,
         adapter_dir: str,
         projector_path: str,
+        stage1_checkpoint_dir: str,
+        pass_dataset_path: str,
         use_best: bool,
         db_path: str,
         image_weather_csv: str,
@@ -515,8 +526,12 @@ class Stage1RainServiceRunner:
         self.projector.to(self.input_device, dtype=torch_dtype)
         self.projector.eval()
         self.num_stage1_tokens = int(projector_ckpt["num_tokens"])
-        self.stage1_checkpoint_dir = str(projector_ckpt["stage1_checkpoint_dir"])
-        self.pass_dataset_path = str(projector_ckpt.get("pass_dataset_path") or "")
+        self.stage1_checkpoint_dir = str(
+            Path(stage1_checkpoint_dir or projector_ckpt["stage1_checkpoint_dir"]).expanduser()
+        )
+        self.pass_dataset_path = str(
+            Path(pass_dataset_path or projector_ckpt.get("pass_dataset_path") or DEFAULT_STAGE1_PASS_DATASET).expanduser()
+        )
 
         print(f"Loading frozen Stage1 encoder from {self.stage1_checkpoint_dir}...", flush=True)
         self.stage1_encoder = FrozenStage1RainEncoder(
@@ -526,7 +541,7 @@ class Stage1RainServiceRunner:
         )
         self.stage1_encoder.eval()
         if not self.pass_dataset_path:
-            self.pass_dataset_path = self.stage1_encoder.cfg["data"]["pass_dataset_path"]
+            self.pass_dataset_path = str(Path(self.stage1_encoder.cfg["data"]["pass_dataset_path"]).expanduser())
 
         print("Building frozen dry-baseline state...", flush=True)
         self.dry_baseline = Stage1DryBaseline(self.stage1_encoder.cfg, self.pass_dataset_path)
@@ -981,6 +996,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--adapter-dir", default="")
     parser.add_argument("--projector-path", default="")
+    parser.add_argument("--stage1-checkpoint-dir", default=DEFAULT_STAGE1_CHECKPOINT_DIR)
+    parser.add_argument("--pass-dataset-path", default=DEFAULT_STAGE1_PASS_DATASET)
     parser.add_argument("--use-best", action="store_true", default=False)
     parser.add_argument("--db-path", default=DEFAULT_SENSOR_DB_PATH)
     parser.add_argument("--image-weather-csv", default=DEFAULT_IMAGE_WEATHER_CSV)
@@ -1008,6 +1025,8 @@ def main() -> None:
         output_dir=args.output_dir,
         adapter_dir=args.adapter_dir,
         projector_path=args.projector_path,
+        stage1_checkpoint_dir=args.stage1_checkpoint_dir,
+        pass_dataset_path=args.pass_dataset_path,
         use_best=args.use_best,
         db_path=args.db_path,
         image_weather_csv=args.image_weather_csv,

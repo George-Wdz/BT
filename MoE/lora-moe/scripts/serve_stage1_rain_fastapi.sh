@@ -6,6 +6,8 @@
 #
 # 关键参数：
 #   OUTPUT_DIR          Stage1 A2B2 训练输出目录，里面应有 adapter/projector.pt 或 best/adapter/best/projector.pt。
+#   STAGE1_CHECKPOINT_DIR 服务端使用的 Stage1 checkpoint，可覆盖 projector.pt 记录的旧路径。
+#   PASS_DATASET_PATH   服务端 dry-baseline 使用的 Stage1 NPZ，可覆盖 projector.pt/meta.pt 记录的旧路径。
 #   USE_BEST            设为 1 时默认加载 best/adapter 和 best/projector.pt；设为 0 加载最终 adapter/projector.pt。
 #   SENSOR_DB_PATH      实时卫星数据库路径。
 #   POLL_INTERVAL_S     后台线程轮询数据库间隔，默认 30 秒。
@@ -27,7 +29,9 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 
 PYTHON=${PYTHON:-python}
 MODEL_DIR=${MODEL_DIR:-/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct}
-OUTPUT_DIR=${OUTPUT_DIR:-/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1}
+OUTPUT_DIR=${OUTPUT_DIR:-/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v2}
+STAGE1_CHECKPOINT_DIR=${STAGE1_CHECKPOINT_DIR:-/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_20260612_1116/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0}
+PASS_DATASET_PATH=${PASS_DATASET_PATH:-/home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260612_1116.npz}
 SENSOR_DB_PATH=${SENSOR_DB_PATH:-/home/wdz/satellite_data/satellite_data.db}
 IMAGE_WEATHER_CSV=${IMAGE_WEATHER_CSV:-/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv}
 IMAGE_TOLERANCE=${IMAGE_TOLERANCE:-10min}
@@ -50,6 +54,8 @@ declare -a CMD=(
   "$PYTHON" -m lora_moe.serve.stage1_rain_fastapi
   --model-dir "$MODEL_DIR"
   --output-dir "$OUTPUT_DIR"
+  --stage1-checkpoint-dir "$STAGE1_CHECKPOINT_DIR"
+  --pass-dataset-path "$PASS_DATASET_PATH"
   --db-path "$SENSOR_DB_PATH"
   --image-weather-csv "$IMAGE_WEATHER_CSV"
   --image-tolerance "$IMAGE_TOLERANCE"

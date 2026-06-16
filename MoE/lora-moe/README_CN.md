@@ -119,10 +119,16 @@ conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 默认 Stage1 checkpoint：
 
 ```text
-/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0
+/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_20260612_1116/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0
 ```
 
-如果之后 Stage1 小模型重训好了，请通过 `STAGE1_CHECKPOINT_DIR=/path/to/new/checkpoint_dir` 指向新权重，并用新的 `OUTPUT_DIR` 重新训练 A2B2。
+默认 Stage1 pass 数据集：
+
+```text
+/home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260612_1116.npz
+```
+
+如果之后 Stage1 小模型重训好了，请通过 `STAGE1_CHECKPOINT_DIR=/path/to/new/checkpoint_dir` 和 `PASS_DATASET_PATH=/path/to/new/pass_dataset.npz` 指向新产物，并用新的 `OUTPUT_DIR` 重新训练 A2B2。
 
 关键默认参数：
 

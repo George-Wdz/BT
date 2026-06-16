@@ -121,10 +121,16 @@ conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 Default Stage1 checkpoint:
 
 ```text
-/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0
+/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_20260612_1116/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0
 ```
 
-After retraining a better Stage1 model, set `STAGE1_CHECKPOINT_DIR=/path/to/new/checkpoint_dir` and train A2B2 again with a new `OUTPUT_DIR`.
+Default Stage1 pass dataset:
+
+```text
+/home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260612_1116.npz
+```
+
+After retraining a better Stage1 model, set `STAGE1_CHECKPOINT_DIR=/path/to/new/checkpoint_dir` and `PASS_DATASET_PATH=/path/to/new/pass_dataset.npz`, then train A2B2 again with a new `OUTPUT_DIR`.
 
 Default key settings:
 

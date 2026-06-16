@@ -20,19 +20,22 @@ from lora_moe.datasets import (
 )
 from lora_moe.train.vision_weather_lora import dtype_from_name, first_parameter_device, tokenize_no_special
 
+DEFAULT_STAGE1_CHECKPOINT_DIR = (
+    "/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/"
+    "pass_dataset_rain_retrieval_20260612_1116/"
+    "stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0"
+)
+DEFAULT_STAGE1_PASS_DATASET = (
+    "/home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/"
+    "pass_dataset_rain_retrieval_20260612_1116.npz"
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train Stage1 rainfall retrieval projector + Qwen LoRA.")
     parser.add_argument("--model-dir", default="/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct")
-    parser.add_argument(
-        "--stage1-checkpoint-dir",
-        default=(
-            "/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/"
-            "pass_dataset_rain_retrieval_compare_channels_compare_cm_cw_20260612_1140_cm/"
-            "stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0"
-        ),
-    )
-    parser.add_argument("--pass-dataset-path", default="")
+    parser.add_argument("--stage1-checkpoint-dir", default=str(DEFAULT_STAGE1_CHECKPOINT_DIR))
+    parser.add_argument("--pass-dataset-path", default=str(DEFAULT_STAGE1_PASS_DATASET))
     parser.add_argument("--output-dir", default="/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_qv_v1")
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--dtype", choices=["float16", "bfloat16", "float32"], default="bfloat16")
@@ -203,8 +206,10 @@ def save_projector(
             "hidden_dim": args.projector_hidden_dim,
             "output_dim": projector.output_dim,
             "num_tokens": projector.num_tokens,
-            "stage1_checkpoint_dir": args.stage1_checkpoint_dir,
-            "pass_dataset_path": args.pass_dataset_path or stage1_encoder.cfg["data"]["pass_dataset_path"],
+            "stage1_checkpoint_dir": str(Path(args.stage1_checkpoint_dir).expanduser()),
+            "pass_dataset_path": str(
+                Path(args.pass_dataset_path or stage1_encoder.cfg["data"]["pass_dataset_path"]).expanduser()
+            ),
             "stage1_cfg": stage1_encoder.cfg,
             "no_rain_threshold": args.no_rain_threshold,
         },
