@@ -49,7 +49,7 @@ Instantaneous rainfall is kept for diagnostics and auxiliary targets; it is not 
 
 ## Model
 
-The model is defined in `Stage1/rain_retrieval/model/models/patch_encoder_decoder.py`.
+The model is defined in `Stage1/rain_retrieval/model/patch_encoder_decoder.py`.
 
 Core components:
 
@@ -74,8 +74,15 @@ Run the full Stage1 workflow:
 
 ```bash
 cd /home/wdz/BT/Stage1/rain_retrieval/model
-ITERATIONS=1 EPOCHS=100 BATCH_SIZE=32 PATIENCE=15 \
 bash scripts/run_rain_retrieval_workflow.sh
+```
+
+Common settings, including GPU selection, paths, feature groups, epoch count,
+batch size, patience, and learning rate, are kept directly in the script's
+`python_cmd` array. For temporary overrides, append command-line arguments:
+
+```bash
+bash scripts/run_rain_retrieval_workflow.sh --lr 0.0002 --epochs 50
 ```
 
 The workflow:
@@ -101,8 +108,7 @@ core_e       = link + position + dry_delta
 no_position  = link + ground_weather + image_weather + dry_delta
 ```
 
-For a single low-level training run, call `python main.py --set ...` directly
-or use `scripts/train_default.sh` as a thin environment-variable launcher.
+For a single low-level training run, call `python main.py --set ...` directly.
 
 ## Splits
 

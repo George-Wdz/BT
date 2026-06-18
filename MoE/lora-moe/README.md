@@ -46,7 +46,7 @@ satellite pass features
 
 Only the projector and LoRA parameters are trained. The Stage1 encoders and the base language model remain frozen.
 
-The first Stage1 training target is intentionally narrow: Qwen learns to produce short Chinese rainfall answers such as "the rainfall for this satellite pass is about X mm" from Stage1 tokens. The answer target uses the frozen Stage1 model prediction instead of the rain-gauge ground-truth label, so training and online inference stay consistent. The rain-gauge resolution is handled with `NO_RAIN_THRESHOLD=0.06`; predictions below this threshold are expressed as no rain / 0 mm. This does not mean the Stage1 model itself is already accurate enough. After the Stage1 checkpoint improves, retrain the corresponding projector and A2B2 LoRA.
+The first Stage1 training target is intentionally narrow: Qwen learns to produce short Chinese rainfall answers such as "the rainfall for this satellite pass is about X mm" from Stage1 tokens. The answer target uses the frozen Stage1 model prediction instead of the rain-gauge ground-truth label, so training and online inference stay consistent. The rain-gauge resolution is handled with `--no-rain-threshold 0.06`; predictions below this threshold are expressed as no rain / 0 mm. This does not mean the Stage1 model itself is already accurate enough. After the Stage1 checkpoint improves, retrain the corresponding projector and A2B2 LoRA.
 
 ## Directory Layout
 
@@ -72,10 +72,6 @@ Smoke test:
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1 \
-MAX_TRAIN_SAMPLES=64 \
-MAX_STEPS=20 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_smoke \
 conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh
 ```
 
@@ -83,13 +79,12 @@ First full pass:
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-MAX_TRAIN_SAMPLES=0 \
-MAX_STEPS=0 \
-EPOCHS=1 \
-GRAD_ACCUM_STEPS=16 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_v1 \
-conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh
+conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh \
+  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_v1 \
+  --max-train-samples 0 \
+  --max-steps 0 \
+  --epochs 1 \
+  --grad-accum-steps 16
 ```
 
 ### Stage1 Rainfall A2B2
@@ -98,10 +93,6 @@ Smoke test:
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1 \
-MAX_TRAIN_SAMPLES=64 \
-MAX_STEPS=20 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_smoke \
 conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 ```
 
@@ -109,13 +100,12 @@ Demo training:
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-MAX_TRAIN_SAMPLES=0 \
-MAX_STEPS=100 \
-EPOCHS=1 \
-GRAD_ACCUM_STEPS=16 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1 \
-conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
+conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh \
+  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1 \
+  --max-train-samples 0 \
+  --max-steps 100 \
+  --epochs 1 \
+  --grad-accum-steps 16
 ```
 
 Default Stage1 checkpoint:
@@ -130,21 +120,24 @@ Default Stage1 pass dataset:
 /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260612_1116.npz
 ```
 
-After retraining a better Stage1 model, set `STAGE1_CHECKPOINT_DIR=/path/to/new/checkpoint_dir` and `PASS_DATASET_PATH=/path/to/new/pass_dataset.npz`, then train A2B2 again with a new `OUTPUT_DIR`.
+After retraining a better Stage1 model, update `--stage1-checkpoint-dir`,
+`--pass-dataset-path`, and `--output-dir` in
+`scripts/train_stage1_rain_lora.sh`, or pass those command-line arguments after
+the script name.
 
 Default key settings:
 
 | Parameter | Default |
 | --- | --- |
-| `BATCH_SIZE` | `1` |
-| `GRAD_ACCUM_STEPS` | `8` for smoke test, `16` for larger runs |
-| `NUM_VISUAL_TOKENS` | `8` |
-| `NUM_STAGE1_TOKENS` | `8` |
-| `PROJECTOR_HIDDEN_DIM` | `1024` |
-| `LORA_R` / `LORA_ALPHA` | `8` / `16` |
-| `LORA_DROPOUT` | `0.05` |
-| `LEARNING_RATE` | `2e-4` |
-| `NO_RAIN_THRESHOLD` | `0.06` |
+| `--batch-size` | `1` |
+| `--grad-accum-steps` | `8` for smoke test, `16` for larger runs |
+| `--num-visual-tokens` | `8` |
+| `--num-stage1-tokens` | `8` |
+| `--projector-hidden-dim` | `1024` |
+| `--lora-r` / `--lora-alpha` | `8` / `16` |
+| `--lora-dropout` | `0.05` |
+| `--learning-rate` | `2e-4` |
+| `--no-rain-threshold` | `0.06` |
 
 ## Inference
 
@@ -152,17 +145,15 @@ Vision-weather batch inference:
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1 \
 conda run --no-capture-output -n smoe bash scripts/infer_vision_weather.sh
 ```
 
 Optional inputs:
 
 ```bash
-IMAGE=/path/to/image.jpg bash scripts/infer_vision_weather.sh
-IMAGE_DIR=/path/to/images bash scripts/infer_vision_weather.sh
-SAVE_JSONL=/tmp/vision_weather_predictions.jsonl bash scripts/infer_vision_weather.sh
+bash scripts/infer_vision_weather.sh --image /path/to/image.jpg
+bash scripts/infer_vision_weather.sh --image-dir /path/to/images
+bash scripts/infer_vision_weather.sh --save-jsonl /tmp/vision_weather_predictions.jsonl
 ```
 
 ## Service
@@ -173,7 +164,6 @@ Vision-weather A1B1:
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1 \
 conda run --no-capture-output -n smoe bash scripts/serve_vision_weather_fastapi.sh
 ```
 
@@ -181,9 +171,8 @@ Stage1 rainfall A2B2:
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1 \
-conda run --no-capture-output -n smoe bash scripts/serve_stage1_rain_fastapi.sh
+conda run --no-capture-output -n smoe bash scripts/serve_stage1_rain_fastapi.sh \
+  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1
 ```
 
 Default ports:
@@ -208,13 +197,13 @@ Key online parameters:
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `POLL_INTERVAL_S` | `30` | Background polling interval |
-| `STALE_AFTER_S` | `180` | Treat latest `phy_data` older than this as no latest pass |
-| `LOOKBACK_HOURS` | `4` | DB window read on each poll |
-| `MAX_PASSES` | `8` | Maximum recent passes kept per update |
-| `USE_BEST` | `1` | Load `best/adapter` and `best/projector.pt` |
-| `SENSOR_DB_PATH` | `/home/wdz/satellite_data/satellite_data.db` | Online satellite DB |
-| `NO_RAIN_THRESHOLD` | `0.06` | Display Stage1 predictions below this threshold as no rain / 0 mm |
+| `--poll-interval-s` | `30` | Background polling interval |
+| `--stale-after-s` | `180` | Treat latest `phy_data` older than this as no latest pass |
+| `--lookback-hours` | `4` | DB window read on each poll |
+| `--max-passes` | `8` | Maximum recent passes kept per update |
+| `--use-best` | enabled | Load `best/adapter` and `best/projector.pt` |
+| `--db-path` | `/home/wdz/satellite_data/satellite_data.db` | Online satellite DB |
+| `--no-rain-threshold` | `0.06` | Display Stage1 predictions below this threshold as no rain / 0 mm |
 
 ## Artifact Management
 

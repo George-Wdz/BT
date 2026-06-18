@@ -52,7 +52,7 @@ Stage1 使用卫星链路遥测、卫星/终端位置、地面气象和可选的
 模型文件：
 
 ```text
-Stage1/rain_retrieval/model/models/patch_encoder_decoder.py
+Stage1/rain_retrieval/model/patch_encoder_decoder.py
 ```
 
 核心模块：
@@ -78,8 +78,14 @@ Stage1/rain_retrieval/model/models/patch_encoder_decoder.py
 
 ```bash
 cd /home/wdz/BT/Stage1/rain_retrieval/model
-ITERATIONS=1 EPOCHS=100 BATCH_SIZE=32 PATIENCE=15 \
 bash scripts/run_rain_retrieval_workflow.sh
+```
+
+常用设置，包括 GPU、路径、输入特征组、epoch、batch size、patience 和学习率，
+都直接写在脚本里的 `python_cmd` 数组中。临时覆盖某个参数时，可以把命令行参数追加到脚本后：
+
+```bash
+bash scripts/run_rain_retrieval_workflow.sh --lr 0.0002 --epochs 50
 ```
 
 该流程会：
@@ -105,8 +111,7 @@ core_e       = link + position + dry_delta
 no_position  = link + ground_weather + image_weather + dry_delta
 ```
 
-如果只需要低层单次训练，可以直接调用 `python main.py --set ...`，
-或使用 `scripts/train_default.sh` 作为环境变量启动器。
+如果只需要低层单次训练，可以直接调用 `python main.py --set ...`。
 
 ## 数据划分
 

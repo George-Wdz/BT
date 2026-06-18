@@ -44,7 +44,7 @@ satellite pass features
   -> 中文降雨量回答
 ```
 
-Stage1 首版训练目标很窄：让 Qwen 根据反演 token 输出“本次卫星过境降雨量约为 X 毫米”。回答目标使用冻结 Stage1 小模型自己的预测值，而不是雨量计真实标签，这样训练和在线推理保持一致。雨量计分辨率按 `NO_RAIN_THRESHOLD=0.06` 处理，预测值低于该阈值时按无雨/0mm 表达。这不代表 Stage1 小模型本身已经足够准确；后续 Stage1 权重更新后，应重新训练对应 projector 和 A2B2 LoRA。
+Stage1 首版训练目标很窄：让 Qwen 根据反演 token 输出“本次卫星过境降雨量约为 X 毫米”。回答目标使用冻结 Stage1 小模型自己的预测值，而不是雨量计真实标签，这样训练和在线推理保持一致。雨量计分辨率按 `--no-rain-threshold 0.06` 处理，预测值低于该阈值时按无雨/0mm 表达。这不代表 Stage1 小模型本身已经足够准确；后续 Stage1 权重更新后，应重新训练对应 projector 和 A2B2 LoRA。
 
 ## 目录
 
@@ -70,10 +70,6 @@ Smoke test：
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1 \
-MAX_TRAIN_SAMPLES=64 \
-MAX_STEPS=20 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_smoke \
 conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh
 ```
 
@@ -81,13 +77,12 @@ conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-MAX_TRAIN_SAMPLES=0 \
-MAX_STEPS=0 \
-EPOCHS=1 \
-GRAD_ACCUM_STEPS=16 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_v1 \
-conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh
+conda run --no-capture-output -n smoe bash scripts/train_vision_weather_lora.sh \
+  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_v1 \
+  --max-train-samples 0 \
+  --max-steps 0 \
+  --epochs 1 \
+  --grad-accum-steps 16
 ```
 
 ### Stage1 反演 A2B2
@@ -96,10 +91,6 @@ Smoke test：
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1 \
-MAX_TRAIN_SAMPLES=64 \
-MAX_STEPS=20 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_smoke \
 conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 ```
 
@@ -107,13 +98,12 @@ conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-MAX_TRAIN_SAMPLES=0 \
-MAX_STEPS=100 \
-EPOCHS=1 \
-GRAD_ACCUM_STEPS=16 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1 \
-conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
+conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh \
+  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1 \
+  --max-train-samples 0 \
+  --max-steps 100 \
+  --epochs 1 \
+  --grad-accum-steps 16
 ```
 
 默认 Stage1 checkpoint：
@@ -128,37 +118,37 @@ conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh
 /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260612_1116.npz
 ```
 
-如果之后 Stage1 小模型重训好了，请通过 `STAGE1_CHECKPOINT_DIR=/path/to/new/checkpoint_dir` 和 `PASS_DATASET_PATH=/path/to/new/pass_dataset.npz` 指向新产物，并用新的 `OUTPUT_DIR` 重新训练 A2B2。
+如果之后 Stage1 小模型重训好了，请在
+`scripts/train_stage1_rain_lora.sh` 中更新 `--stage1-checkpoint-dir`、
+`--pass-dataset-path` 和 `--output-dir`，或把这些命令行参数追加到脚本后重新训练 A2B2。
 
 关键默认参数：
 
 | 参数 | 默认值 |
 | --- | --- |
-| `BATCH_SIZE` | `1` |
-| `GRAD_ACCUM_STEPS` | smoke test 用 `8`，较大训练用 `16` |
-| `NUM_VISUAL_TOKENS` | `8` |
-| `NUM_STAGE1_TOKENS` | `8` |
-| `PROJECTOR_HIDDEN_DIM` | `1024` |
-| `LORA_R` / `LORA_ALPHA` | `8` / `16` |
-| `LORA_DROPOUT` | `0.05` |
-| `LEARNING_RATE` | `2e-4` |
-| `NO_RAIN_THRESHOLD` | `0.06` |
+| `--batch-size` | `1` |
+| `--grad-accum-steps` | smoke test 用 `8`，较大训练用 `16` |
+| `--num-visual-tokens` | `8` |
+| `--num-stage1-tokens` | `8` |
+| `--projector-hidden-dim` | `1024` |
+| `--lora-r` / `--lora-alpha` | `8` / `16` |
+| `--lora-dropout` | `0.05` |
+| `--learning-rate` | `2e-4` |
+| `--no-rain-threshold` | `0.06` |
 
 ## 推理
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1 \
 conda run --no-capture-output -n smoe bash scripts/infer_vision_weather.sh
 ```
 
 可选输入：
 
 ```bash
-IMAGE=/path/to/image.jpg bash scripts/infer_vision_weather.sh
-IMAGE_DIR=/path/to/images bash scripts/infer_vision_weather.sh
-SAVE_JSONL=/tmp/vision_weather_predictions.jsonl bash scripts/infer_vision_weather.sh
+bash scripts/infer_vision_weather.sh --image /path/to/image.jpg
+bash scripts/infer_vision_weather.sh --image-dir /path/to/images
+bash scripts/infer_vision_weather.sh --save-jsonl /tmp/vision_weather_predictions.jsonl
 ```
 
 ## 服务
@@ -169,7 +159,6 @@ SAVE_JSONL=/tmp/vision_weather_predictions.jsonl bash scripts/infer_vision_weath
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1 \
 conda run --no-capture-output -n smoe bash scripts/serve_vision_weather_fastapi.sh
 ```
 
@@ -177,9 +166,8 @@ Stage1 反演 A2B2：
 
 ```bash
 cd /home/wdz/BT/MoE/lora-moe
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-OUTPUT_DIR=/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1 \
-conda run --no-capture-output -n smoe bash scripts/serve_stage1_rain_fastapi.sh
+conda run --no-capture-output -n smoe bash scripts/serve_stage1_rain_fastapi.sh \
+  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v1
 ```
 
 默认端口：
@@ -204,13 +192,13 @@ Stage1 A2B2 服务启动时会持久化加载：
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `POLL_INTERVAL_S` | `30` | 后台轮询间隔 |
-| `STALE_AFTER_S` | `180` | 最新 `phy_data` 超过该秒数视为无最新卫星过境 |
-| `LOOKBACK_HOURS` | `4` | 每次只读取最近几小时数据库 |
-| `MAX_PASSES` | `8` | 每次最多保留最近几个 pass |
-| `USE_BEST` | `1` | 加载 `best/adapter` 和 `best/projector.pt` |
-| `SENSOR_DB_PATH` | `/home/wdz/satellite_data/satellite_data.db` | 实时卫星数据库 |
-| `NO_RAIN_THRESHOLD` | `0.06` | 低于该阈值的 Stage1 预测展示为无雨/0mm |
+| `--poll-interval-s` | `30` | 后台轮询间隔 |
+| `--stale-after-s` | `180` | 最新 `phy_data` 超过该秒数视为无最新卫星过境 |
+| `--lookback-hours` | `4` | 每次只读取最近几小时数据库 |
+| `--max-passes` | `8` | 每次最多保留最近几个 pass |
+| `--use-best` | 已启用 | 加载 `best/adapter` 和 `best/projector.pt` |
+| `--db-path` | `/home/wdz/satellite_data/satellite_data.db` | 实时卫星数据库 |
+| `--no-rain-threshold` | `0.06` | 低于该阈值的 Stage1 预测展示为无雨/0mm |
 
 ## 产物管理
 
