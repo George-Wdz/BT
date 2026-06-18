@@ -104,8 +104,11 @@ bash scripts/run_feature_ablation.sh \
 Default feature-ablation variants:
 
 ```text
+full_a       = link + position + ground_weather + image_weather + dry_delta
 core_e       = link + position + dry_delta
 no_position  = link + ground_weather + image_weather + dry_delta
+no_image     = link + position + ground_weather + dry_delta
+no_ground    = link + position + image_weather + dry_delta
 ```
 
 For a single low-level training run, call `python main.py --set ...` directly.

@@ -45,6 +45,8 @@ VARIANT_GROUPS = {
     "full_a": "link,position,ground_weather,image_weather,dry_delta",
     "core_e": "link,position,dry_delta",
     "no_position": "link,ground_weather,image_weather,dry_delta",
+    "no_image": "link,position,ground_weather,dry_delta",
+    "no_ground": "link,position,image_weather,dry_delta",
 }
 
 
@@ -723,7 +725,7 @@ def build_parser() -> argparse.ArgumentParser:
     ablation = sub.add_parser("feature-ablation", help="Run feature-group ablation variants.")
     add_common_args(ablation)
     ablation.set_defaults(func=run_feature_ablation)
-    ablation.add_argument("--variants", default=env("VARIANTS", "core_e,no_position"))
+    ablation.add_argument("--variants", default=env("VARIANTS", "full_a,core_e,no_position,no_image,no_ground"))
 
     compare = sub.add_parser("compare-channels", help="Compare channel-mixing and two-stage attention.")
     add_common_args(compare)

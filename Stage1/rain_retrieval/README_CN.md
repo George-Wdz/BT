@@ -107,8 +107,11 @@ bash scripts/run_feature_ablation.sh \
 默认特征消融组合：
 
 ```text
+full_a       = link + position + ground_weather + image_weather + dry_delta
 core_e       = link + position + dry_delta
 no_position  = link + ground_weather + image_weather + dry_delta
+no_image     = link + position + ground_weather + dry_delta
+no_ground    = link + position + image_weather + dry_delta
 ```
 
 如果只需要低层单次训练，可以直接调用 `python main.py --set ...`。
