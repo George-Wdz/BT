@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # Stage1 input-feature ablation workflow.
+# This workflow reuses an existing pass_dataset_*.npz and image-label CSV so
+# all ablation variants are trained/evaluated on exactly the same samples.
+# It does not regenerate camera labels or rebuild the NPZ dataset. Run
+# run_rain_retrieval_workflow.sh first if new camera images or DB rows need to
+# be included.
 # Default variants:
 #   core_e      = link + position + dry_delta
 #   no_position = link + ground_weather + image_weather + dry_delta
@@ -19,7 +24,9 @@ python_cmd=(
   python3 run_workflow.py feature-ablation
   --experiment feature_ablation                                                                  # 实验名称，参与默认 dataset_name 命名
   --variants core_e,no_position                                                                  # 要运行的特征消融组合，逗号分隔
-  --image-label-csv /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv # 已生成的相机天气标签 CSV
+  --reuse-dataset 1                                                                               # 1=复用老数据；消融固定同一个 NPZ，保证不同特征组合公平对比
+  --pass-dataset-path /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260617_1806.npz # 消融复用的 NPZ pass 数据集；不会重新切片
+  --image-label-csv /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv # 已生成的相机天气标签 CSV；不会重新预测照片标签
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # 默认查找 NPZ pass 数据集的目录
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录

@@ -65,7 +65,18 @@ def env_bool(name: str, default: bool) -> bool:
     value = env(name)
     if value is None:
         return default
-    return value.lower() in {"1", "true", "yes", "on"}
+    return parse_bool(value)
+
+
+def parse_bool(value: str | bool | int) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"expected 0/1 or true/false, got: {value}")
 
 
 def timestamp_minute() -> str:
@@ -650,7 +661,16 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--log-dir", default=env("LOG_DIR"))
     parser.add_argument("--workflow-log", default=env("WORKFLOW_LOG"))
     parser.add_argument("--train-log", default=env("TRAIN_LOG"))
-    parser.add_argument("--reuse-dataset", action=argparse.BooleanOptionalAction, default=env_bool("REUSE_DATASET", False))
+    parser.add_argument(
+        "--reuse-dataset",
+        nargs="?",
+        const="1",
+        type=parse_bool,
+        default=env_bool("REUSE_DATASET", False),
+        metavar="{0,1}",
+        help="0: generate new image labels and a new NPZ; 1: reuse an existing NPZ and latest image labels.",
+    )
+    parser.add_argument("--no-reuse-dataset", dest="reuse_dataset", action="store_false", help=argparse.SUPPRESS)
     parser.add_argument("--incremental-npz", action=argparse.BooleanOptionalAction, default=env_bool("INCREMENTAL_NPZ", True))
     parser.add_argument("--incremental-source-npz", default=env("INCREMENTAL_SOURCE_NPZ"))
     parser.add_argument("--incremental-lookback-minutes", type=float, default=env_float("INCREMENTAL_LOOKBACK_MINUTES", 20.0))

@@ -2,6 +2,15 @@
 # End-to-end Stage1 rainfall retrieval workflow.
 # The orchestration lives in scripts/run_workflow.py; this file keeps the
 # experiment knobs visible, similar to Stage2/GPT4TS scripts.
+#
+# 默认行为：
+#   1. 重新扫描 camera-input-dir 中的图片，生成本次 run_ts 对应的天气标签 CSV，并更新 latest_weather_labels*.csv。
+#   2. 基于最新已有 pass_dataset_*.npz 和数据库新增行，增量构建一个新的时间戳 NPZ 数据集。
+#   3. 使用新 NPZ 训练模型，并评估 train/val/test。
+#
+# --reuse-dataset:
+#   0 = 使用新数据：重新生成照片标签，并增量构建新的时间戳 NPZ。
+#   1 = 复用老数据：跳过照片标签生成和 NPZ 构建，直接使用已有 NPZ/latest_weather_labels_slim.csv。
 
 set -euo pipefail
 
@@ -18,7 +27,16 @@ python_cmd=(
   python3 run_workflow.py rain
   --experiment rain_retrieval                                                                    # 实验名称，参与默认 dataset_name 命名
   --db-path /home/wdz/satellite_data/satellite_data.db                                           # 卫星链路和气象数据库路径
+  --camera-input-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera                              # 新照片目录；默认会从这里重新生成天气标签
+  --label-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels                               # 天气标签 CSV 输出目录，会更新 latest_weather_labels*.csv
+  --vision-dir /home/wdz/BT/Stage1/vision_weather                                                 # 视觉分类模型工程目录
+  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt # 视觉分类模型权重
+  --vision-batch-size 64                                                                          # 生成照片天气标签时的 batch size
+  --vision-num-workers 0                                                                          # 生成照片天气标签时的 DataLoader worker 数
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # NPZ pass 数据集保存目录
+  --reuse-dataset 0                                                                               # 0=使用新数据生成标签/NPZ；1=复用已有 NPZ 和 latest 标签
+  --incremental-npz                                                                               # 基于最新已有 NPZ 增量合并数据库新增 pass，而不是全库重建
+  --incremental-lookback-minutes 20                                                               # 增量构建时回看已有 NPZ 末尾多少分钟，避免 pass 边界断裂
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录

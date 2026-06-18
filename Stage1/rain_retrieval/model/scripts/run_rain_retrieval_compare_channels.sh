@@ -18,6 +18,7 @@ python_cmd=(
   --experiment rain_retrieval_compare_channels                                                   # 实验名称，参与默认 dataset_name 命名
   --db-path /home/wdz/satellite_data/satellite_data.db                                           # 卫星链路和气象数据库路径
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # NPZ pass 数据集保存目录
+  --reuse-dataset 0                                                                               # 0=使用新数据生成标签/NPZ；1=复用已有 NPZ 和 latest 标签
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
