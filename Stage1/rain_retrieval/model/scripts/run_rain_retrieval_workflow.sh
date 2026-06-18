@@ -1,172 +1,33 @@
 #!/usr/bin/env bash
 # End-to-end Stage1 rainfall retrieval workflow.
-#
-# Default flow:
-#   1. Predict camera weather labels with a minute-level timestamp.
-#   2. Incrementally merge new DB rows into a timestamped NPZ dataset.
-#   3. Train the recommended drybase + summary + instant-aux model.
-#   4. Export full predictions, rainy-only predictions, and MAE/MSE/RMSE metrics.
+# The orchestration lives in scripts/run_workflow.py; this file keeps the
+# experiment knobs visible, similar to Stage2/GPT4TS scripts.
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-STAGE1_ROOT="$(cd "$ROOT/.." && pwd)"
-cd "$ROOT"
+cd /home/wdz/BT/Stage1/rain_retrieval/model
 
-RUN_TS="${RUN_TS:-$(date +%Y%m%d_%H%M)}"
-EXPERIMENT="${EXPERIMENT:-rain_retrieval}"
-DATASET_NAME="${DATASET_NAME:-pass_dataset_${EXPERIMENT}_${RUN_TS}}"
+python_cmd=(
+  env
+  CUDA_VISIBLE_DEVICES=0                                                                        # 训练使用的 GPU 编号；如需沿用当前环境，删除本行
+  python3 run_workflow.py rain
+  --experiment rain_retrieval                                                                    # 实验名称，参与默认 dataset_name 命名
+  --db-path /home/wdz/satellite_data/satellite_data.db                                           # 卫星链路和气象数据库路径
+  --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # NPZ pass 数据集保存目录
+  --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
+  --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
+  --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
+  --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，决定 input_dim 和 feature_group_dims
+  --val-strategy stratified_all                                                                  # train/val/test 划分策略
+  --iterations 1                                                                                 # 独立训练重复次数
+  --epochs 100                                                                                   # 每次训练最大 epoch
+  --batch-size 64                                                                                # 训练 batch size
+  --patience 15                                                                                  # early stopping 容忍 epoch 数
+  --lr 0.0001                                                                                    # 初始学习率
+  --image-tolerance 10min                                                                        # 相机天气标签和卫星过境的时间匹配窗口
+  --dry-baseline-image-rain-prob-threshold 0.2                                                    # dry baseline 候选中排除视觉雨天的概率阈值
+  --auxiliary-loss-weight 0.3                                                                    # 辅助目标损失权重
+  --eval-batch-size 128                                                                          # 训练后评估 batch size
+)
 
-LABEL_DIR="${LABEL_DIR:-$STAGE1_ROOT/data/camera_labels}"
-DATASET_DIR="${DATASET_DIR:-$ROOT/data/datasets}"
-CHECKPOINT_BASE="${CHECKPOINT_BASE:-$ROOT/checkpoints}"
-RESULT_BASE="${RESULT_BASE:-$STAGE1_ROOT/analysis/satellite_weather_diff/runs}"
-LOG_DIR="${LOG_DIR:-$ROOT/logs}"
-
-LABEL_CSV="$LABEL_DIR/${RUN_TS}_weather_labels.csv"
-SLIM_LABEL_CSV="$LABEL_DIR/${RUN_TS}_weather_labels_slim.csv"
-PASS_DATASET_PATH="${PASS_DATASET_PATH:-$DATASET_DIR/${DATASET_NAME}.npz}"
-CHECKPOINTS="${CHECKPOINTS:-$CHECKPOINT_BASE/${DATASET_NAME}}"
-RUN_RESULT_DIR="${RUN_RESULT_DIR:-$RESULT_BASE/${DATASET_NAME}}"
-WORKFLOW_LOG="${WORKFLOW_LOG:-$LOG_DIR/${DATASET_NAME}_workflow.log}"
-TRAIN_LOG="${TRAIN_LOG:-$LOG_DIR/${DATASET_NAME}_train.log}"
-
-mkdir -p "$LABEL_DIR" "$DATASET_DIR" "$CHECKPOINTS" "$RUN_RESULT_DIR" "$LOG_DIR"
-
-log() {
-  echo "[$(date '+%F %T')] $*" | tee -a "$WORKFLOW_LOG"
-}
-
-run_logged() {
-  log "$*"
-  "$@" 2>&1 | tee -a "$WORKFLOW_LOG"
-}
-
-latest_existing_npz() {
-  if [[ -n "${INCREMENTAL_SOURCE_NPZ:-}" ]]; then
-    echo "$INCREMENTAL_SOURCE_NPZ"
-    return
-  fi
-  if [[ -f "$PASS_DATASET_PATH" ]]; then
-    echo "$PASS_DATASET_PATH"
-    return
-  fi
-  find "$DATASET_DIR" -maxdepth 1 -type f -name "pass_dataset_*.npz" \
-    ! -path "$PASS_DATASET_PATH" -printf '%T@ %p\n' 2>/dev/null |
-    sort -n |
-    tail -1 |
-    cut -d' ' -f2-
-}
-
-log "Stage1 workflow started"
-log "dataset_name=$DATASET_NAME"
-log "run_ts=$RUN_TS"
-log "label_csv=$SLIM_LABEL_CSV"
-log "dataset_npz=$PASS_DATASET_PATH"
-log "checkpoints=$CHECKPOINTS"
-log "results=$RUN_RESULT_DIR"
-
-export RUN_TS
-export PASS_DATASET_PATH
-export BATCH_SIZE="${VISION_BATCH_SIZE:-${BATCH_SIZE:-64}}"
-if [[ "${INCREMENTAL_NPZ:-1}" = "1" ]]; then
-  export BUILD_NPZ=0
-  run_logged bash scripts/predict_camera_weather.sh
-
-  if [[ ! -f "$SLIM_LABEL_CSV" ]]; then
-    echo "Missing expected label CSV: $SLIM_LABEL_CSV" >&2
-    exit 1
-  fi
-
-  SOURCE_NPZ="$(latest_existing_npz || true)"
-  if [[ -n "$SOURCE_NPZ" && -f "$SOURCE_NPZ" ]]; then
-    log "incremental_npz=1 source_npz=$SOURCE_NPZ output_npz=$PASS_DATASET_PATH"
-    run_logged python3 scripts/incremental_build_pass_dataset.py \
-      --db-path "${DB_PATH:-/home/wdz/satellite_data/satellite_data.db}" \
-      --existing-npz "$SOURCE_NPZ" \
-      --output-path "$PASS_DATASET_PATH" \
-      --image-csv "$SLIM_LABEL_CSV" \
-      --image-tolerance "${IMAGE_TOLERANCE:-10min}" \
-      --lookback-minutes "${INCREMENTAL_LOOKBACK_MINUTES:-20}"
-  else
-    log "incremental_npz=1 but no source NPZ found; building full dataset"
-    run_logged python3 scripts/incremental_build_pass_dataset.py \
-      --db-path "${DB_PATH:-/home/wdz/satellite_data/satellite_data.db}" \
-      --existing-npz "$PASS_DATASET_PATH" \
-      --output-path "$PASS_DATASET_PATH" \
-      --image-csv "$SLIM_LABEL_CSV" \
-      --image-tolerance "${IMAGE_TOLERANCE:-10min}"
-  fi
-else
-  export BUILD_NPZ=1
-  export REBUILD_NPZ="${REBUILD_NPZ:-1}"
-  run_logged bash scripts/predict_camera_weather.sh
-
-  if [[ ! -f "$SLIM_LABEL_CSV" ]]; then
-    echo "Missing expected label CSV: $SLIM_LABEL_CSV" >&2
-    exit 1
-  fi
-fi
-if [[ ! -f "$PASS_DATASET_PATH" ]]; then
-  echo "Missing expected dataset NPZ: $PASS_DATASET_PATH" >&2
-  exit 1
-fi
-
-export IMAGE_LABEL_CSV="$SLIM_LABEL_CSV"
-export CHECKPOINTS
-export LOG_FILE="$TRAIN_LOG"
-export VAL_STRATEGY="${VAL_STRATEGY:-stratified_all}"
-export ITERATIONS="${ITERATIONS:-1}"
-export EPOCHS="${EPOCHS:-100}"
-export BATCH_SIZE="${BATCH_SIZE:-32}"
-export PATIENCE="${PATIENCE:-15}"
-run_logged bash scripts/train_experiments.sh "$EXPERIMENT"
-
-CKPT_DIR="$(
-  find "$CHECKPOINTS" -type f -name checkpoint.pth -printf '%T@ %h\n' |
-    sort -n |
-    tail -1 |
-    cut -d' ' -f2-
-)"
-if [[ -z "$CKPT_DIR" || ! -f "$CKPT_DIR/checkpoint.pth" ]]; then
-  echo "No checkpoint.pth found under $CHECKPOINTS" >&2
-  exit 1
-fi
-log "selected_checkpoint=$CKPT_DIR"
-
-if [[ "${RUN_LINK_ANALYSIS:-0}" = "1" ]]; then
-  LINK_ANALYSIS_DIR="$RUN_RESULT_DIR/link_diff"
-  run_logged python3 "$STAGE1_ROOT/analysis/satellite_weather_diff/analyze_satellite_weather_diff.py" \
-    --npz "$PASS_DATASET_PATH" \
-    --out-dir "$LINK_ANALYSIS_DIR"
-else
-  LINK_ANALYSIS_DIR=""
-  log "skip link text analysis; metrics are exported by evaluate_checkpoint_splits.py"
-fi
-
-PRED_CSV="$RUN_RESULT_DIR/${DATASET_NAME}_predictions.csv"
-TEST_CSV="$RUN_RESULT_DIR/${DATASET_NAME}_test_predictions.csv"
-METRICS_CSV="$RUN_RESULT_DIR/${DATASET_NAME}_metrics.csv"
-run_logged python3 scripts/evaluate_checkpoint_splits.py \
-  --checkpoint-dir "$CKPT_DIR" \
-  --batch-size "${EVAL_BATCH_SIZE:-128}" \
-  --out-csv "$PRED_CSV" \
-  --test-csv "$TEST_CSV" \
-  --metrics-csv "$METRICS_CSV"
-
-{
-  echo "dataset_name,$DATASET_NAME"
-  echo "run_ts,$RUN_TS"
-  echo "label_csv,$SLIM_LABEL_CSV"
-  echo "dataset_npz,$PASS_DATASET_PATH"
-  echo "checkpoint_dir,$CKPT_DIR"
-  echo "prediction_csv,$PRED_CSV"
-  echo "test_prediction_csv,$TEST_CSV"
-  echo "metrics_csv,$METRICS_CSV"
-  echo "link_analysis_dir,$LINK_ANALYSIS_DIR"
-  echo "workflow_log,$WORKFLOW_LOG"
-  echo "train_log,$TRAIN_LOG"
-} > "$RUN_RESULT_DIR/run_manifest.csv"
-
-log "Stage1 workflow completed"
-log "manifest=$RUN_RESULT_DIR/run_manifest.csv"
+"${python_cmd[@]}" "$@"

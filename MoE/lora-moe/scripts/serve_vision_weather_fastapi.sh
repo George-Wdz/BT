@@ -1,58 +1,27 @@
 #!/usr/bin/env bash
-# Serve Qwen + vision-weather LoRA + projector with FastAPI.
-#
-# 常用启动：
-#   CUDA_VISIBLE_DEVICES=0,1 OUTPUT_DIR=outputs/vision_weather_lora_qv_v1 bash scripts/serve_vision_weather_fastapi.sh
-#   PORT=8010 SERVE_HOST=0.0.0.0 bash scripts/serve_vision_weather_fastapi.sh
-#
-# 关键参数：
-#   OUTPUT_DIR       视觉 A1B1 训练输出目录，里面应有 adapter/projector.pt 或 best/adapter/best/projector.pt。
-#   ADAPTER_DIR      手动指定 LoRA adapter 目录；设置后覆盖 OUTPUT_DIR 自动推断。
-#   PROJECTOR_PATH   手动指定 projector.pt；设置后覆盖 OUTPUT_DIR 自动推断。
-#   VISION_WEIGHTS   手动指定 WeatherClassifier 权重；默认使用 Stage1/vision_weather 内当前权重。
-#   SERVE_HOST       FastAPI 监听地址。服务器演示通常用 0.0.0.0。
-#   PORT             FastAPI 端口，默认 8010。
-#   DEVICE_MAP       Qwen 多卡切分方式，14B 推荐 auto。
-#   DTYPE            Qwen 权重精度，4090 推荐 bfloat16。
+# Serve Qwen + vision-weather LoRA-MoE expert with FastAPI.
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+export PYTHONPATH=/home/wdz/BT/MoE/lora-moe/src
+export TRITON_CACHE_DIR=/tmp/triton-cache-wdz
+export PYTHONDONTWRITEBYTECODE=1
+export TOKENIZERS_PARALLELISM=false
 
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
-export PYTHONPATH="${PWD}/src:${PYTHONPATH:-}"
-export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/triton-cache-${USER}}"
-export PYTHONDONTWRITEBYTECODE="${PYTHONDONTWRITEBYTECODE:-1}"
-export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+cd /home/wdz/BT/MoE/lora-moe
 
-PYTHON=${PYTHON:-python}
-MODEL_DIR=${MODEL_DIR:-/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct}
-OUTPUT_DIR=${OUTPUT_DIR:-/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1}
-VISION_WEIGHTS=${VISION_WEIGHTS:-/home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt}
-# Do not use $HOST here: conda/build environments may set HOST=x86_64-conda-linux-gnu.
-SERVE_HOST=${SERVE_HOST:-0.0.0.0}
-PORT=${PORT:-8010}
-DEVICE_MAP=${DEVICE_MAP:-auto}
-DTYPE=${DTYPE:-bfloat16}
-
-declare -a CMD=(
-  "$PYTHON" -m lora_moe.serve.vision_weather_fastapi
-  --model-dir "$MODEL_DIR"
-  --output-dir "$OUTPUT_DIR"
-  --host "$SERVE_HOST"
-  --port "$PORT"
-  --device-map "$DEVICE_MAP"
-  --dtype "$DTYPE"
-  --vision-weights "$VISION_WEIGHTS"
-  --use-best
+python_cmd=(
+  env
+  CUDA_VISIBLE_DEVICES=0,1                                                                 # 服务使用的 GPU 编号；如需沿用当前环境，删除本行
+  python -m lora_moe.serve.vision_weather_fastapi
+  --model-dir /home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct                                 # Qwen2.5-14B-Instruct 基座路径
+  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1                 # 视觉天气 LoRA 输出目录
+  --host 0.0.0.0                                                                            # FastAPI 监听地址
+  --port 8010                                                                               # FastAPI 端口
+  --device-map auto                                                                         # Qwen 多卡切分方式
+  --dtype bfloat16                                                                          # Qwen 权重精度
+  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt # 冻结视觉分类器权重
+  --use-best                                                                                # 加载 best adapter/projector
 )
 
-if [ -n "${ADAPTER_DIR:-}" ]; then
-  CMD+=(--adapter-dir "$ADAPTER_DIR")
-fi
-if [ -n "${PROJECTOR_PATH:-}" ]; then
-  CMD+=(--projector-path "$PROJECTOR_PATH")
-fi
-
-echo "Command: ${CMD[*]} $*"
-"${CMD[@]}" "$@"
+"${python_cmd[@]}" "$@"

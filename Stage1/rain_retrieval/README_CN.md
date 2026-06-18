@@ -90,22 +90,23 @@ bash scripts/run_rain_retrieval_workflow.sh
 4. 评估 train/validation/test；
 5. 输出运行索引和指标。
 
-只训练推荐实验：
+在已有 pass 数据集上运行输入特征消融：
 
 ```bash
 cd /home/wdz/BT/Stage1/rain_retrieval/model
-VAL_STRATEGY=stratified_all \
-ITERATIONS=1 EPOCHS=100 BATCH_SIZE=32 PATIENCE=15 \
-bash scripts/train_experiments.sh rain_retrieval
+bash scripts/run_feature_ablation.sh \
+  --pass-dataset-path data/datasets/pass_dataset_rain_retrieval_20260617_1806.npz
 ```
 
-常用消融：
+默认特征消融组合：
 
-```bash
-bash scripts/train_experiments.sh ablate_no_instant_aux
-bash scripts/train_experiments.sh ablate_no_summary
-bash scripts/train_experiments.sh ablate_no_drybase
+```text
+core_e       = link + position + dry_delta
+no_position  = link + ground_weather + image_weather + dry_delta
 ```
+
+如果只需要低层单次训练，可以直接调用 `python main.py --set ...`，
+或使用 `scripts/train_default.sh` 作为环境变量启动器。
 
 ## 数据划分
 

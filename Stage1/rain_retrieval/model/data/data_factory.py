@@ -22,6 +22,21 @@ from data.preprocessing import build_pass_dataset
 
 _PASSES_CACHE = {}  # 按数据路径和过滤条件缓存已加载的 passes，避免重复 I/O
 
+FEATURE_GROUP_KEYS = {
+    "link": "link_features",
+    "position": "position_features",
+    "ground_weather": "ground_weather",
+    "image_weather": "image_weather",
+    "dry_delta": "link_dry_delta",
+    "dry_delta_summary": "link_dry_delta_summary",
+}
+
+FEATURE_GROUP_DIMS = {
+    "position": 6,
+    "ground_weather": 3,
+    "image_weather": 4,
+}
+
 
 def _parse_satellite_filter(raw_ids) -> set[int]:
     if raw_ids in (None, "", []):
@@ -31,12 +46,72 @@ def _parse_satellite_filter(raw_ids) -> set[int]:
     return {int(x) for x in raw_ids}
 
 
+def _parse_feature_groups(raw_groups) -> list[str]:
+    if raw_groups in (None, "", []):
+        return ["link", "position", "ground_weather", "image_weather", "dry_delta"]
+    if isinstance(raw_groups, str):
+        text = raw_groups.strip()
+        if text.startswith("[") and text.endswith("]"):
+            text = text[1:-1]
+        raw_groups = [x.strip() for x in text.split(",") if x.strip()]
+    groups = [str(g).strip() for g in raw_groups if str(g).strip()]
+    unknown = [g for g in groups if g not in FEATURE_GROUP_KEYS]
+    if unknown:
+        raise ValueError(f"Unknown feature groups: {unknown}. Available: {sorted(FEATURE_GROUP_KEYS)}")
+    return groups
+
+
+def enabled_feature_groups(cfg: dict) -> list[str]:
+    return _parse_feature_groups(cfg.get("features", {}).get("enabled_groups"))
+
+
+def feature_group_dims(cfg: dict, groups: list[str] | None = None) -> list[int]:
+    groups = groups or enabled_feature_groups(cfg)
+    dims = []
+    link_dim = len(cfg.get("features", {}).get("link", []))
+    if link_dim <= 0:
+        link_dim = int(cfg["model"]["feature_group_dims"][0])
+    for group in groups:
+        if group in ("link", "dry_delta"):
+            dims.append(link_dim)
+        elif group == "dry_delta_summary":
+            dims.append(link_dim * 6)
+        else:
+            dims.append(FEATURE_GROUP_DIMS[group])
+    return dims
+
+
+def validate_feature_config(cfg: dict) -> None:
+    groups = enabled_feature_groups(cfg)
+    dims = feature_group_dims(cfg, groups)
+    input_dim = int(cfg["model"]["input_dim"])
+    configured_dims = list(cfg["model"].get("feature_group_dims", []))
+    if sum(dims) != input_dim:
+        raise ValueError(
+            f"features.enabled_groups={groups} imply input_dim={sum(dims)}, "
+            f"but model.input_dim={input_dim}"
+        )
+    if configured_dims and list(configured_dims) != dims:
+        raise ValueError(
+            f"features.enabled_groups={groups} imply feature_group_dims={dims}, "
+            f"but model.feature_group_dims={configured_dims}"
+        )
+    if "dry_delta" in groups and not cfg.get("dry_baseline", {}).get("enabled", False):
+        raise ValueError("features.enabled_groups includes dry_delta but dry_baseline.enabled is false")
+    if "dry_delta_summary" in groups and not cfg.get("dry_baseline", {}).get("add_summary", False):
+        raise ValueError("features.enabled_groups includes dry_delta_summary but dry_baseline.add_summary is false")
+    if "image_weather" in groups and not cfg.get("image_weather", {}).get("enabled", False):
+        raise ValueError("features.enabled_groups includes image_weather but image_weather.enabled is false")
+
+
 def _optional_feature_keys(cfg: dict) -> list[str]:
     keys = []
     baseline_cfg = cfg.get("dry_baseline", {})
+    groups = enabled_feature_groups(cfg)
     if baseline_cfg.get("enabled", False):
-        keys.append("link_dry_delta")
-        if baseline_cfg.get("add_summary", False):
+        if "dry_delta" in groups:
+            keys.append("link_dry_delta")
+        if "dry_delta_summary" in groups and baseline_cfg.get("add_summary", False):
             keys.append("link_dry_delta_summary")
     return keys
 
@@ -104,7 +179,7 @@ def _is_dry_baseline_candidate(p: Dict, baseline_cfg: dict, threshold: float) ->
         prob = _image_rain_probability(p)
         image_available = int(p.get("label_meta", {}).get("image_available", 0) or 0)
         if image_available and prob is not None:
-            limit = float(baseline_cfg.get("image_rain_prob_threshold", 0.5))
+            limit = float(baseline_cfg.get("image_rain_prob_threshold", 0.2))
             if prob >= limit:
                 return False
     return True
@@ -413,6 +488,7 @@ def data_provider(cfg: dict,
         max_len=cfg["model"]["max_seq_len"],
         scaler_X=scaler_X, scaler_y=scaler_y, fit_scalers=fit,
         extra_feature_keys=_optional_feature_keys(cfg),
+        feature_groups=enabled_feature_groups(cfg),
         target_names=list(cfg["targets"]["primary"]) + list(cfg["targets"].get("auxiliary", [])),
     )
 

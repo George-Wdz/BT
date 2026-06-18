@@ -21,8 +21,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from data.data_factory import data_provider
-from models.patch_encoder_decoder import PatchEncoderDecoder
+from data.data_factory import data_provider, validate_feature_config
+from patch_encoder_decoder import PatchEncoderDecoder
 from utils.tools import EarlyStopping, adjust_learning_rate, vali, test
 
 
@@ -296,6 +296,7 @@ def main(cfg_path: str, overrides: list[str] | None = None, dry_run: bool = Fals
     overrides = overrides or []
     apply_overrides(cfg, overrides)
     _coerce_numeric(cfg)
+    validate_feature_config(cfg)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")

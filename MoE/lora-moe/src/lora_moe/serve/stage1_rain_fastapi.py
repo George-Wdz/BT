@@ -40,6 +40,7 @@ from data.data_factory import (  # noqa: E402
     _mean_vector,
     _optional_feature_keys,
     _pass_center,
+    enabled_feature_groups,
     split_passes_by_time,
 )
 from data.dataset import PassDataset, SatelliteIDMapper  # noqa: E402
@@ -449,6 +450,7 @@ class Stage1OnlineFeatureBuilder:
             scaler_y=self.meta["scaler_y"],
             fit_scalers=False,
             extra_feature_keys=_optional_feature_keys(self.cfg),
+            feature_groups=enabled_feature_groups(self.cfg),
             target_names=list(self.cfg["targets"]["primary"]) + list(self.cfg["targets"].get("auxiliary", [])),
         )
 

@@ -13,7 +13,7 @@ STAGE1_MODEL_ROOT = Path("/home/wdz/BT/Stage1/rain_retrieval/model")
 if str(STAGE1_MODEL_ROOT) not in sys.path:
     sys.path.insert(0, str(STAGE1_MODEL_ROOT))
 
-from data.data_factory import _optional_feature_keys, attach_train_dry_baseline, split_passes_by_time  # noqa: E402
+from data.data_factory import _optional_feature_keys, attach_train_dry_baseline, enabled_feature_groups, split_passes_by_time  # noqa: E402
 from data.dataset import PassDataset, SatelliteIDMapper  # noqa: E402
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -255,6 +255,7 @@ class Stage1RainInstructionDataset(Dataset):
             scaler_y=meta["scaler_y"],
             fit_scalers=False,
             extra_feature_keys=_optional_feature_keys(cfg),
+            feature_groups=enabled_feature_groups(cfg),
             target_names=list(cfg["targets"]["primary"]) + list(cfg["targets"].get("auxiliary", [])),
         )
 

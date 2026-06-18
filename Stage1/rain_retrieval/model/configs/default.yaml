@@ -14,6 +14,12 @@ data:
 checkpoints: "/home/wdz/BT/Stage1/rain_retrieval/model/checkpoints_stage1_rain_retrieval/"
 
 features:
+  enabled_groups:
+    - link
+    - position
+    - ground_weather
+    - image_weather
+    - dry_delta
   link:  # phy_data
     - phyRssi
     - rssi
@@ -43,7 +49,7 @@ dry_baseline:
   add_summary: false          # true 时附加 dry delta 的 mean/std/min/max/range/slope 统计值
   exclude_instant_rain: true   # 构建 dry baseline 时排除 rain_rate_max>阈值的短时雨 pass
   exclude_image_rain: true     # 构建 dry baseline 时排除视觉模型认为下雨的 pass
-  image_rain_prob_threshold: 0.5
+  image_rain_prob_threshold: 0.2
   time_scale_hours: 72.0      # matched 中时间距离的归一化尺度
   time_weight: 1.0
   position_weight: 1.0

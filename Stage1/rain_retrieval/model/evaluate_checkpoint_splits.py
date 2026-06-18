@@ -14,17 +14,18 @@ import yaml
 from torch.utils.data import DataLoader
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from data.data_factory import (
     _optional_feature_keys,
     attach_train_dry_baseline,
+    enabled_feature_groups,
     load_all_passes,
     split_passes_by_time,
 )
 from data.dataset import PassDataset, SatelliteIDMapper
-from models.patch_encoder_decoder import PatchEncoderDecoder
+from patch_encoder_decoder import PatchEncoderDecoder
 
 
 def _coerce_numeric(cfg: dict) -> None:
@@ -204,6 +205,7 @@ def main() -> None:
             scaler_y=scaler_y,
             fit_scalers=False,
             extra_feature_keys=_optional_feature_keys(cfg),
+            feature_groups=enabled_feature_groups(cfg),
             target_names=list(cfg["targets"]["primary"]) + list(cfg["targets"].get("auxiliary", [])),
         )
         pred, true = _predict(model, ds, device, args.batch_size)

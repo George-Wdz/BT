@@ -86,22 +86,23 @@ The workflow:
 4. evaluates train/validation/test splits;
 5. writes a run manifest and metrics.
 
-Run only the recommended experiment:
+Run feature ablations on an existing pass dataset:
 
 ```bash
 cd /home/wdz/BT/Stage1/rain_retrieval/model
-VAL_STRATEGY=stratified_all \
-ITERATIONS=1 EPOCHS=100 BATCH_SIZE=32 PATIENCE=15 \
-bash scripts/train_experiments.sh rain_retrieval
+bash scripts/run_feature_ablation.sh \
+  --pass-dataset-path data/datasets/pass_dataset_rain_retrieval_20260617_1806.npz
 ```
 
-Useful ablations:
+Default feature-ablation variants:
 
-```bash
-bash scripts/train_experiments.sh ablate_no_instant_aux
-bash scripts/train_experiments.sh ablate_no_summary
-bash scripts/train_experiments.sh ablate_no_drybase
+```text
+core_e       = link + position + dry_delta
+no_position  = link + ground_weather + image_weather + dry_delta
 ```
+
+For a single low-level training run, call `python main.py --set ...` directly
+or use `scripts/train_default.sh` as a thin environment-variable launcher.
 
 ## Splits
 

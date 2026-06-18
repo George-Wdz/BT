@@ -33,6 +33,15 @@ META_LABEL_KEYS = {
     "rainy_ratio",
 }
 
+FEATURE_GROUP_TO_PASS_KEY = {
+    "link": "link_features",
+    "position": "position_features",
+    "ground_weather": "ground_weather",
+    "image_weather": "image_weather",
+    "dry_delta": "link_dry_delta",
+    "dry_delta_summary": "link_dry_delta_summary",
+}
+
 
 class SatelliteIDMapper:
     """将卫星ID映射为连续索引（含未知ID的冷启动槽位）"""
@@ -61,10 +70,12 @@ class PassDataset(Dataset):
                  scaler_y: StandardScaler = None,
                  fit_scalers: bool = False,
                  extra_feature_keys: List[str] = None,
+                 feature_groups: List[str] = None,
                  target_names: List[str] = None):
         self.max_len = max_len
         self.sat_mapper = sat_mapper
         self.extra_feature_keys = extra_feature_keys or []
+        self.feature_groups = feature_groups
         self.target_names = target_names or [
             "pass_rainfall_mm", "wind_speed", "wind_direction"
         ]
@@ -76,17 +87,27 @@ class PassDataset(Dataset):
         labels_list = []
 
         for p in passes:
-            parts = [
-                p["link_features"],         # (T, 6)
-                p["position_features"],     # (T, 6)
-                p["ground_weather"],        # (T, 3)
-            ]
-            if "image_weather" in p:
-                parts.append(p["image_weather"])  # (T, 4)
-            for key in self.extra_feature_keys:
-                if key not in p:
-                    raise KeyError(f"pass is missing optional feature group: {key}")
-                parts.append(p[key])
+            if self.feature_groups is None:
+                parts = [
+                    p["link_features"],
+                    p["position_features"],
+                    p["ground_weather"],
+                ]
+                if "image_weather" in p:
+                    parts.append(p["image_weather"])
+                for key in self.extra_feature_keys:
+                    if key not in p:
+                        raise KeyError(f"pass is missing optional feature group: {key}")
+                    parts.append(p[key])
+            else:
+                parts = []
+                for group in self.feature_groups:
+                    key = FEATURE_GROUP_TO_PASS_KEY.get(group)
+                    if key is None:
+                        raise KeyError(f"unknown feature group: {group}")
+                    if key not in p:
+                        raise KeyError(f"pass is missing feature group '{group}' ({key})")
+                    parts.append(p[key])
             feat = np.concatenate(parts, axis=1).astype(np.float32)   # (T, C)
             # 截断超长过境
             if len(feat) > max_len:

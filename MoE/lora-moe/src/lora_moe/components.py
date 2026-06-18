@@ -17,7 +17,7 @@ if str(STAGE1_MODEL_ROOT) not in sys.path:
     sys.path.insert(0, str(STAGE1_MODEL_ROOT))
 
 from vision_weather.models import WeatherClassifier  # noqa: E402
-from models.patch_encoder_decoder import PatchEncoderDecoder  # noqa: E402
+from patch_encoder_decoder import PatchEncoderDecoder  # noqa: E402
 
 
 class FrozenWeatherVisionEncoder(nn.Module):
