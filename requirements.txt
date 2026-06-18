@@ -1,0 +1,26 @@
+# Core dependencies for this repository's Stage1 rain retrieval,
+# Stage1 vision weather classifier, and MoE/lora-moe FastAPI services.
+#
+# Recommended Python: 3.10
+#
+# For GPU training/inference, install a CUDA-enabled PyTorch wheel that matches
+# the target machine before or with this file. Example:
+#   pip install torch==2.0.1 --index-url https://download.pytorch.org/whl/cu118
+
+numpy>=1.25.0,<3.0.0
+pandas>=2.0.3
+scikit-learn>=1.3.0
+PyYAML>=6.0.1
+Pillow>=9.4.0
+tqdm>=4.65.0
+
+torch>=2.0.1
+transformers>=4.40.2
+peft>=0.4.0
+accelerate>=0.21.0
+safetensors>=0.4.5
+tokenizers>=0.19.1
+
+fastapi>=0.99.1
+uvicorn[standard]>=0.23.0
+pydantic>=1.10.0
