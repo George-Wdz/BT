@@ -279,7 +279,10 @@ def build_or_reuse_dataset(args: argparse.Namespace, paths: Paths, image_csv: Pa
         return paths.pass_dataset_path
 
     raw_source = args.incremental_source_npz or env("INCREMENTAL_SOURCE_NPZ")
-    if raw_source:
+    if not args.incremental_npz:
+        source = paths.dataset_dir / "__full_rebuild_source_not_exists__.npz"
+        logger.log(f"incremental_npz=0 full rebuild output_npz={paths.pass_dataset_path}")
+    elif raw_source:
         source = Path(raw_source).expanduser()
     else:
         source = paths.pass_dataset_path if paths.pass_dataset_path.exists() else latest_npz(paths.dataset_dir, paths.pass_dataset_path)
@@ -671,7 +674,16 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         help="0: generate new image labels and a new NPZ; 1: reuse an existing NPZ and latest image labels.",
     )
     parser.add_argument("--no-reuse-dataset", dest="reuse_dataset", action="store_false", help=argparse.SUPPRESS)
-    parser.add_argument("--incremental-npz", action=argparse.BooleanOptionalAction, default=env_bool("INCREMENTAL_NPZ", True))
+    parser.add_argument(
+        "--incremental-npz",
+        nargs="?",
+        const="1",
+        type=parse_bool,
+        default=env_bool("INCREMENTAL_NPZ", True),
+        metavar="{0,1}",
+        help="0: rebuild the full NPZ and rematch all image labels; 1: incrementally merge new DB rows from an existing NPZ.",
+    )
+    parser.add_argument("--no-incremental-npz", dest="incremental_npz", action="store_false", help=argparse.SUPPRESS)
     parser.add_argument("--incremental-source-npz", default=env("INCREMENTAL_SOURCE_NPZ"))
     parser.add_argument("--incremental-lookback-minutes", type=float, default=env_float("INCREMENTAL_LOOKBACK_MINUTES", 20.0))
     parser.add_argument("--strict-source-filters", action="store_true", default=env_bool("STRICT_SOURCE_FILTERS", False))

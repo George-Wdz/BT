@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Compare channel-mixing (cm) and two-stage channel attention (cw) on the same
 # Stage1 rainfall retrieval dataset.
+#
+# 默认使用新数据并全量重建 NPZ，保证 cm/cw 两个模型在同一个最新数据集上比较。
+# 如果只想复用已有 NPZ，把 --reuse-dataset 改成 1，并指定 --pass-dataset-path。
 
 set -euo pipefail
 
@@ -17,8 +20,15 @@ python_cmd=(
   python3 run_workflow.py compare-channels
   --experiment rain_retrieval_compare_channels                                                   # 实验名称，参与默认 dataset_name 命名
   --db-path /home/wdz/satellite_data/satellite_data.db                                           # 卫星链路和气象数据库路径
+  --camera-input-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera                              # 新照片目录；默认会从这里重新生成天气标签
+  --label-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels                               # 天气标签 CSV 输出目录，会更新 latest_weather_labels*.csv
+  --vision-dir /home/wdz/BT/Stage1/vision_weather                                                 # 视觉分类模型工程目录
+  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt # 视觉分类模型权重
+  --vision-batch-size 64                                                                          # 生成照片天气标签时的 batch size
+  --vision-num-workers 8                                                                          # 生成照片天气标签时的 DataLoader worker 数
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # NPZ pass 数据集保存目录
   --reuse-dataset 0                                                                               # 0=使用新数据生成标签/NPZ；1=复用已有 NPZ 和 latest 标签
+  --incremental-npz 0                                                                             # 0=全量重建并重新匹配所有历史照片；1=只增量合并新增 pass
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录

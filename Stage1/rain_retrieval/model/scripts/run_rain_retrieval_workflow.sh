@@ -11,6 +11,10 @@
 # --reuse-dataset:
 #   0 = 使用新数据：重新生成照片标签，并增量构建新的时间戳 NPZ。
 #   1 = 复用老数据：跳过照片标签生成和 NPZ 构建，直接使用已有 NPZ/latest_weather_labels_slim.csv。
+#
+# --incremental-npz:
+#   0 = 全量重建 NPZ，重新用最新照片标签匹配所有历史 pass；补齐历史照片后应使用这个。
+#   1 = 增量构建 NPZ，只重建最新数据库窗口并与旧 NPZ 合并；日常追加新数据时更快。
 
 set -euo pipefail
 
@@ -32,10 +36,10 @@ python_cmd=(
   --vision-dir /home/wdz/BT/Stage1/vision_weather                                                 # 视觉分类模型工程目录
   --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt # 视觉分类模型权重
   --vision-batch-size 64                                                                          # 生成照片天气标签时的 batch size
-  --vision-num-workers 0                                                                          # 生成照片天气标签时的 DataLoader worker 数
+  --vision-num-workers 8                                                                          # 生成照片天气标签时的 DataLoader worker 数
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # NPZ pass 数据集保存目录
   --reuse-dataset 0                                                                               # 0=使用新数据生成标签/NPZ；1=复用已有 NPZ 和 latest 标签
-  --incremental-npz                                                                               # 基于最新已有 NPZ 增量合并数据库新增 pass，而不是全库重建
+  --incremental-npz 0                                                                             # 0=全量重建并重新匹配所有历史照片；1=只增量合并新增 pass
   --incremental-lookback-minutes 20                                                               # 增量构建时回看已有 NPZ 末尾多少分钟，避免 pass 边界断裂
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
