@@ -380,7 +380,7 @@ def split_passes_by_time(
     val_strategy: str = "time",
     seed: int = 42,
 ) -> Tuple[List[Dict], List[Dict], List[Dict]]:
-    """按 pass 起始时间排序后顺序切分为 train/val/test。"""
+    """Split passes into train/val/test according to the configured strategy."""
     assert abs(sum(split) - 1.0) < 1e-6, f"data_split must sum to 1, got {split}"
 
     def start_ts(p):
