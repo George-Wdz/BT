@@ -150,6 +150,11 @@ def main() -> None:
         action="store_true",
         help="Parse timestamp from filename and return timestamp_unix in dataset items.",
     )
+    parser.add_argument(
+        "--no-check-images",
+        action="store_true",
+        help="Skip opening every image before training. Use this when the image set is already trusted.",
+    )
     args = parser.parse_args()
 
     data_dir = _resolve_path(args.data_dir, must_exist=True)
@@ -172,7 +177,7 @@ def main() -> None:
             image_size=args.image_size,
             class_names=class_names_arg,
             parse_timestamp=args.parse_timestamp,
-            check_images=True,
+            check_images=not args.no_check_images,
         )
     else:
         train_ds, val_ds, class_names = build_train_val_datasets(
@@ -182,7 +187,7 @@ def main() -> None:
             seed=args.seed,
             class_names=class_names_arg,
             parse_timestamp=args.parse_timestamp,
-            check_images=True,
+            check_images=not args.no_check_images,
         )
     num_classes = len(class_names)
 

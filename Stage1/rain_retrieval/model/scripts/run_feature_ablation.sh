@@ -11,6 +11,13 @@
 #   no_position  = link + ground_weather + image_weather + dry_delta
 #   no_image     = link + position + ground_weather + dry_delta
 #   no_ground    = link + position + image_weather + dry_delta
+#
+# 固定数据建议：
+#   消融实验必须尽量固定同一个 NPZ，否则不同特征组合之间的数据样本不同，指标不可直接比较。
+#   因此这里默认 reuse-dataset=1，并显式写 --pass-dataset-path。
+#   如果想复用最新 NPZ 但不关心具体文件，可以删除 --pass-dataset-path；代码会从
+#   --dataset-dir 下按文件修改时间选择最新的 pass_dataset_*.npz。
+#   --image-label-csv 只用于记录/配置一致性；当 NPZ 已经构建好时，图像天气特征已经写入 NPZ。
 
 set -euo pipefail
 
@@ -29,7 +36,9 @@ python_cmd=(
   --variants full_a,core_e,no_position,no_image,no_ground                                         # 要运行的特征消融组合，逗号分隔
   --reuse-dataset 1                                                                               # 1=复用老数据；消融固定同一个 NPZ，保证不同特征组合公平对比
   --pass-dataset-path /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260618_1536.npz # 消融复用的 NPZ pass 数据集；不会重新切片
+  # --pass-dataset-path /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260623_1344.npz # 示例：改成最近一次 workflow 生成的 NPZ
   --image-label-csv /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv # 已生成的相机天气标签 CSV；不会重新预测照片标签
+  # --image-label-csv /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/20260623_1344_weather_labels_slim.csv             # 示例：显式绑定某一次 run 的照片标签 CSV，便于复现实验
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # 默认查找 NPZ pass 数据集的目录
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录

@@ -4,6 +4,16 @@
 #
 # 默认使用新数据并全量重建 NPZ，保证 cm/cw 两个模型在同一个最新数据集上比较。
 # 如果只想复用已有 NPZ，把 --reuse-dataset 改成 1，并指定 --pass-dataset-path。
+#
+# 常用路径参数：
+#   --dataset-dir       NPZ 数据集目录。未指定 --pass-dataset-path 时，新 NPZ 默认保存为：
+#                       {dataset-dir}/pass_dataset_{experiment}_{run_ts}.npz
+#   --pass-dataset-path 指定某一个 NPZ 文件。reuse-dataset=0 时表示“新 NPZ 输出路径”；
+#                       reuse-dataset=1 时表示“复用这个已有 NPZ”。
+#   --image-label-csv   指定已有照片天气标签 CSV。复用已有 NPZ 做 cm/cw 对比时建议显式指定，
+#                       便于 run_manifest 记录对应标签版本。
+#   --incremental-source-npz
+#                       incremental-npz=1 时显式指定增量构建的源 NPZ；不指定则自动找最新 NPZ。
 
 set -euo pipefail
 
@@ -27,8 +37,11 @@ python_cmd=(
   --vision-batch-size 64                                                                          # 生成照片天气标签时的 batch size
   --vision-num-workers 8                                                                          # 生成照片天气标签时的 DataLoader worker 数
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # NPZ pass 数据集保存目录
+  # --pass-dataset-path /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_compare_channels_20260623_1344.npz # 可选：指定新 NPZ 输出路径；若 reuse-dataset=1，则表示复用这个已有 NPZ
+  # --image-label-csv /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/20260623_1344_weather_labels_slim.csv                              # 可选：指定已有照片标签 CSV；不指定时 reuse-dataset=0 会重新生成，reuse-dataset=1 默认用 latest
   --reuse-dataset 0                                                                               # 0=使用新数据生成标签/NPZ；1=复用已有 NPZ 和 latest 标签
   --incremental-npz 0                                                                             # 0=全量重建并重新匹配所有历史照片；1=只增量合并新增 pass
+  # --incremental-source-npz /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260623_1344.npz # 可选：incremental-npz=1 时显式指定增量构建的源 NPZ；不指定则自动找 dataset-dir 中最新 NPZ
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录

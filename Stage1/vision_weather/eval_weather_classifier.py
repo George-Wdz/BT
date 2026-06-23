@@ -182,6 +182,11 @@ def main() -> None:
         default="",
         help="Comma-separated class names. If empty, prefer class_names from weight, then infer from folders.",
     )
+    parser.add_argument(
+        "--no-check-images",
+        action="store_true",
+        help="Skip opening every image before evaluation. Use this when the image set is already trusted.",
+    )
     parser.add_argument("--save-csv", action="store_true", help="Save evaluation metrics as a single CSV file in logs/.")
     args = parser.parse_args()
 
@@ -210,7 +215,7 @@ def main() -> None:
         image_size=image_size,
         class_names=class_names,
         parse_timestamp=False,
-        check_images=True,
+        check_images=not args.no_check_images,
     )
 
     loader = DataLoader(
