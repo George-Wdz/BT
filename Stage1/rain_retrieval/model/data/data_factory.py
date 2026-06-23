@@ -155,13 +155,13 @@ def _delta_summary_features(delta: np.ndarray) -> np.ndarray:
     return np.repeat(stats.reshape(1, -1), repeats=len(delta), axis=0)
 
 
-def _image_rain_probability(p: Dict) -> float | None:
+def _image_weather_probabilities(p: Dict) -> tuple[float | None, float | None]:
     if "image_weather" not in p:
-        return None
+        return None, None
     image = np.asarray(p["image_weather"], dtype=np.float32)
     if image.ndim != 2 or image.shape[1] < 3:
-        return None
-    return float(np.nanmean(image[:, 2]))
+        return None, None
+    return float(np.nanmean(image[:, 0])), float(np.nanmean(image[:, 2]))
 
 
 def _is_dry_baseline_candidate(p: Dict, baseline_cfg: dict, threshold: float) -> bool:
@@ -175,13 +175,26 @@ def _is_dry_baseline_candidate(p: Dict, baseline_cfg: dict, threshold: float) ->
         if rain_rate_max > threshold:
             return False
 
-    if baseline_cfg.get("exclude_image_rain", True):
-        prob = _image_rain_probability(p)
-        image_available = int(p.get("label_meta", {}).get("image_available", 0) or 0)
-        if image_available and prob is not None:
+    image_available = int(p.get("label_meta", {}).get("image_available", 0) or 0)
+    require_image = bool(baseline_cfg.get("require_image_available", False))
+    min_sunny_prob = baseline_cfg.get("min_sunny_prob")
+    if min_sunny_prob is not None:
+        min_sunny_prob = float(min_sunny_prob)
+
+    if require_image and not image_available:
+        return False
+
+    sunny_prob, rain_prob = _image_weather_probabilities(p)
+    if image_available:
+        if baseline_cfg.get("exclude_image_rain", True) and rain_prob is not None:
             limit = float(baseline_cfg.get("image_rain_prob_threshold", 0.2))
-            if prob >= limit:
+            if rain_prob >= limit:
                 return False
+        if min_sunny_prob is not None and min_sunny_prob > 0:
+            if sunny_prob is None or sunny_prob < min_sunny_prob:
+                return False
+    elif min_sunny_prob is not None and min_sunny_prob > 0:
+        return False
     return True
 
 
@@ -258,7 +271,9 @@ def attach_train_dry_baseline(
         print(
             f"Attached train dry baseline deltas: method=mean, satellites={len(sat_baseline)}, "
             f"link_dim={link_dim}, add_summary={add_summary}, candidates={len(dry_train)}, "
-            f"threshold={threshold:g}"
+            f"threshold={threshold:g}, require_image_available={baseline_cfg.get('require_image_available', False)}, "
+            f"min_sunny_prob={baseline_cfg.get('min_sunny_prob')}, "
+            f"image_rain_prob_threshold={baseline_cfg.get('image_rain_prob_threshold', 0.2)}"
         )
         return apply_mean(train_passes), apply_mean(val_passes), apply_mean(test_passes)
 

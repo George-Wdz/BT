@@ -125,6 +125,39 @@ def latest_checkpoint(checkpoints: Path) -> Path:
     return matches[-1].parent
 
 
+def best_iteration_checkpoint(checkpoints: Path, logger: Logger | None = None) -> Path:
+    summary_path = checkpoints / "iteration_summary.csv"
+    if not summary_path.exists():
+        ckpt = latest_checkpoint(checkpoints)
+        if logger is not None:
+            logger.log(f"iteration_summary_not_found fallback_latest_checkpoint={ckpt}")
+        return ckpt
+
+    summary = pd.read_csv(summary_path)
+    required = {"setting", "target", "mae"}
+    missing = required - set(summary.columns)
+    if missing:
+        raise ValueError(f"invalid iteration summary {summary_path}: missing columns {sorted(missing)}")
+    rainfall = summary[summary["target"] == "pass_rainfall_mm"].copy()
+    if rainfall.empty:
+        raise ValueError(f"iteration summary has no pass_rainfall_mm rows: {summary_path}")
+    rainfall["mae"] = pd.to_numeric(rainfall["mae"], errors="coerce")
+    rainfall = rainfall.dropna(subset=["mae"]).sort_values("mae")
+    if rainfall.empty:
+        raise ValueError(f"iteration summary has no numeric MAE rows: {summary_path}")
+
+    for _, row in rainfall.iterrows():
+        ckpt = checkpoints / str(row["setting"])
+        if (ckpt / "checkpoint.pth").exists():
+            if logger is not None:
+                logger.log(
+                    f"best_iteration_checkpoint={ckpt} "
+                    f"target=pass_rainfall_mm mae={float(row['mae']):.6g}"
+                )
+            return ckpt
+    raise FileNotFoundError(f"no checkpoint.pth found for summary rows in {checkpoints}")
+
+
 def write_manifest(path: Path, rows: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as f:
@@ -346,6 +379,8 @@ def training_overrides(
         "dry_baseline.exclude_instant_rain=true",
         "dry_baseline.exclude_image_rain=true",
         f"dry_baseline.image_rain_prob_threshold={args.dry_baseline_image_rain_prob_threshold}",
+        f"dry_baseline.require_image_available={str(args.dry_baseline_require_image_available).lower()}",
+        f"dry_baseline.min_sunny_prob={args.dry_baseline_min_sunny_prob}",
         *feature_overrides(feature_groups),
         "model.use_summary_token=true",
         "targets.auxiliary=[rain_rate_mean,rain_rate_max,rainy_ratio]",
@@ -394,7 +429,7 @@ def train_variant(
     for item in overrides:
         cmd.extend(["--set", item])
     logger.run(cmd, extra_log=train_log)
-    ckpt_dir = latest_checkpoint(checkpoints)
+    ckpt_dir = best_iteration_checkpoint(checkpoints, logger)
     logger.log(f"selected_checkpoint={ckpt_dir}")
     return ckpt_dir
 
@@ -704,6 +739,16 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--data-num-workers", type=int, default=env_int("DATA_NUM_WORKERS", 0))
     parser.add_argument("--eval-batch-size", type=int, default=env_int("EVAL_BATCH_SIZE", 128))
     parser.add_argument("--dry-baseline-image-rain-prob-threshold", type=float, default=env_float("DRY_BASELINE_IMAGE_RAIN_PROB_THRESHOLD", 0.2))
+    parser.add_argument(
+        "--dry-baseline-require-image-available",
+        nargs="?",
+        const="1",
+        type=parse_bool,
+        default=env_bool("DRY_BASELINE_REQUIRE_IMAGE_AVAILABLE", False),
+        metavar="{0,1}",
+        help="0: allow dry baseline candidates without image labels; 1: require matched image labels.",
+    )
+    parser.add_argument("--dry-baseline-min-sunny-prob", type=float, default=env_float("DRY_BASELINE_MIN_SUNNY_PROB", 0.0))
     parser.add_argument("--auxiliary-loss-weight", type=float, default=env_float("AUXILIARY_LOSS_WEIGHT", 0.3))
     parser.add_argument("--lr", default=env("LR"))
     parser.add_argument("--e-layers", type=int, default=env("E_LAYERS"))

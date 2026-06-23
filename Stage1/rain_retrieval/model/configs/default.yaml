@@ -50,6 +50,8 @@ dry_baseline:
   exclude_instant_rain: true   # 构建 dry baseline 时排除 rain_rate_max>阈值的短时雨 pass
   exclude_image_rain: true     # 构建 dry baseline 时排除视觉模型认为下雨的 pass
   image_rain_prob_threshold: 0.2
+  require_image_available: false # false 时无相机标签的无雨 pass 也可参与 dry baseline
+  min_sunny_prob: 0.0            # >0 时才额外要求视觉模型 sunny 概率达到该阈值
   time_scale_hours: 72.0      # matched 中时间距离的归一化尺度
   time_weight: 1.0
   position_weight: 1.0

@@ -25,6 +25,10 @@
 #                       不指定且 reuse-dataset=0 时，会重新跑视觉模型并生成本次 run_ts 标签。
 #   --label-dir         天气标签 CSV 输出目录。workflow 每次生成时间戳 CSV 后，会额外复制一份
 #                       latest_weather_labels_slim.csv，方便后续复用最新标签。
+#
+# dry baseline 默认逻辑：
+#   先要求气象站累计雨量/瞬时雨强为 0；若有相机标签，则排除视觉模型认为下雨的 pass。
+#   默认不强制必须有相机标签，也不强制 sunny 概率阈值，这样 dry baseline 覆盖更稳定。
 
 set -euo pipefail
 
@@ -44,7 +48,7 @@ python_cmd=(
   --camera-input-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera                              # 新照片目录；默认会从这里重新生成天气标签
   --label-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels                               # 天气标签 CSV 输出目录，会更新 latest_weather_labels*.csv
   --vision-dir /home/wdz/BT/Stage1/vision_weather                                                 # 视觉分类模型工程目录
-  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260623_110605_weather_cls_rain_station_balanced_30ep_best_model.pt # 视觉分类模型权重
+  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260623_133102_weather_cls_rain_station_balanced_100ep_best_model.pt # 视觉分类模型权重
   --vision-batch-size 64                                                                          # 生成照片天气标签时的 batch size
   --vision-num-workers 8                                                                          # 生成照片天气标签时的 DataLoader worker 数
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # NPZ pass 数据集保存目录
@@ -59,13 +63,15 @@ python_cmd=(
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
   --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，决定 input_dim 和 feature_group_dims
   --val-strategy stratified_all                                                                  # 数据划分策略，见脚本顶部说明
-  --iterations 1                                                                                 # 独立训练重复次数
+  --iterations 3                                                                                 # 独立训练重复次数
   --epochs 100                                                                                   # 每次训练最大 epoch
   --batch-size 64                                                                                # 训练 batch size
   --patience 15                                                                                  # early stopping 容忍 epoch 数
   --lr 0.0001                                                                                    # 初始学习率
   --image-tolerance 10min                                                                        # 相机天气标签和卫星过境的时间匹配窗口
   --dry-baseline-image-rain-prob-threshold 0.2                                                    # dry baseline 候选中排除视觉雨天的概率阈值
+  --dry-baseline-require-image-available 0                                                        # 0=无图像也可参与 dry baseline；1=只用有相机标签的 pass
+  --dry-baseline-min-sunny-prob 0.0                                                               # >0 时要求 prob_sunny 不低于该阈值；0=不启用 sunny 阈值
   --auxiliary-loss-weight 0.3                                                                    # 辅助目标损失权重
   --eval-batch-size 128                                                                          # 训练后评估 batch size
 )

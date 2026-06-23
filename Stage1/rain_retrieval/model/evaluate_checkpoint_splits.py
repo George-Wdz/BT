@@ -33,6 +33,7 @@ def _coerce_numeric(cfg: dict) -> None:
     for k in (
         "rain_threshold",
         "image_rain_prob_threshold",
+        "min_sunny_prob",
         "time_scale_hours",
         "time_weight",
         "position_weight",

@@ -14,6 +14,10 @@
 #                       便于 run_manifest 记录对应标签版本。
 #   --incremental-source-npz
 #                       incremental-npz=1 时显式指定增量构建的源 NPZ；不指定则自动找最新 NPZ。
+#
+# dry baseline 默认逻辑：
+#   先要求气象站累计雨量/瞬时雨强为 0；若有相机标签，则排除视觉模型认为下雨的 pass。
+#   默认不强制必须有相机标签，也不强制 sunny 概率阈值。
 
 set -euo pipefail
 
@@ -33,7 +37,7 @@ python_cmd=(
   --camera-input-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera                              # 新照片目录；默认会从这里重新生成天气标签
   --label-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera_labels                               # 天气标签 CSV 输出目录，会更新 latest_weather_labels*.csv
   --vision-dir /home/wdz/BT/Stage1/vision_weather                                                 # 视觉分类模型工程目录
-  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt # 视觉分类模型权重
+  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260623_133102_weather_cls_rain_station_balanced_100ep_best_model.pt # 视觉分类模型权重
   --vision-batch-size 64                                                                          # 生成照片天气标签时的 batch size
   --vision-num-workers 8                                                                          # 生成照片天气标签时的 DataLoader worker 数
   --dataset-dir /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets                           # NPZ pass 数据集保存目录
@@ -54,6 +58,8 @@ python_cmd=(
   --lr 0.0001                                                                                    # 初始学习率
   --image-tolerance 10min                                                                        # 相机天气标签和卫星过境的时间匹配窗口
   --dry-baseline-image-rain-prob-threshold 0.2                                                    # dry baseline 候选中排除视觉雨天的概率阈值
+  --dry-baseline-require-image-available 0                                                        # 0=无图像也可参与 dry baseline；1=只用有相机标签的 pass
+  --dry-baseline-min-sunny-prob 0.0                                                               # >0 时要求 prob_sunny 不低于该阈值；0=不启用 sunny 阈值
   --auxiliary-loss-weight 0.3                                                                    # 辅助目标损失权重
   --eval-batch-size 128                                                                          # 训练后评估 batch size
 )

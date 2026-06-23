@@ -11,6 +11,7 @@ import sys
 import time
 import random
 import argparse
+import csv
 import re
 from pathlib import Path
 
@@ -208,7 +209,7 @@ def run_one_iter(cfg: dict, itr: int, device):
         "sat_mapper": sat_mapper.id_to_idx,
     }, save_dir / "meta.pt")
 
-    return results
+    return itr, setting, results
 
 
 def _coerce_numeric(cfg: dict):
@@ -228,6 +229,7 @@ def _coerce_numeric(cfg: dict):
     for k in (
         "rain_threshold",
         "image_rain_prob_threshold",
+        "min_sunny_prob",
         "time_scale_hours",
         "time_weight",
         "position_weight",
@@ -322,14 +324,32 @@ def main(cfg_path: str, overrides: list[str] | None = None, dry_run: bool = Fals
 
     # 汇总：按 target 聚合 mae/mse 的均值与方差
     print("\n========== Summary across iterations ==========")
-    target_names = list(all_results[0].keys())
+    target_names = list(all_results[0][2].keys())
     metric_names = ["mae", "mse"]
     for tn in target_names:
         line = [f"[{tn}]"]
         for mn in metric_names:
-            vals = np.array([r[tn][mn] for r in all_results])
+            vals = np.array([r[2][tn][mn] for r in all_results])
             line.append(f"{mn}={vals.mean():.4f}±{vals.std():.4f}")
         print(" ".join(line))
+
+    summary_path = Path(cfg["checkpoints"]) / "iteration_summary.csv"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    with summary_path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["iteration", "setting", "target", "mae", "mse"])
+        writer.writeheader()
+        for iteration, setting, metrics in all_results:
+            for target, values in metrics.items():
+                writer.writerow(
+                    {
+                        "iteration": iteration,
+                        "setting": setting,
+                        "target": target,
+                        "mae": values.get("mae"),
+                        "mse": values.get("mse"),
+                    }
+                )
+    print(f"Saved iteration summary to {summary_path}")
 
 
 if __name__ == "__main__":

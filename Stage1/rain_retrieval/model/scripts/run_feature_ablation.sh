@@ -18,6 +18,10 @@
 #   如果想复用最新 NPZ 但不关心具体文件，可以删除 --pass-dataset-path；代码会从
 #   --dataset-dir 下按文件修改时间选择最新的 pass_dataset_*.npz。
 #   --image-label-csv 只用于记录/配置一致性；当 NPZ 已经构建好时，图像天气特征已经写入 NPZ。
+#
+# dry baseline 默认逻辑：
+#   先要求气象站累计雨量/瞬时雨强为 0；若有相机标签，则排除视觉模型认为下雨的 pass。
+#   默认不强制必须有相机标签，也不强制 sunny 概率阈值。
 
 set -euo pipefail
 
@@ -50,6 +54,8 @@ python_cmd=(
   --patience 15                                                                                  # early stopping 容忍 epoch 数
   --lr 0.0001                                                                                    # 初始学习率
   --dry-baseline-image-rain-prob-threshold 0.2                                                    # dry baseline 候选中排除视觉雨天的概率阈值
+  --dry-baseline-require-image-available 0                                                        # 0=无图像也可参与 dry baseline；1=只用有相机标签的 pass
+  --dry-baseline-min-sunny-prob 0.0                                                               # >0 时要求 prob_sunny 不低于该阈值；0=不启用 sunny 阈值
   --auxiliary-loss-weight 0.3                                                                    # 辅助目标损失权重
   --eval-batch-size 128                                                                          # 训练后评估 batch size
 )
