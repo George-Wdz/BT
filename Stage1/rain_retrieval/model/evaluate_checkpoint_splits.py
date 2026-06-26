@@ -21,6 +21,8 @@ from data.data_factory import (
     _optional_feature_keys,
     attach_train_dry_baseline,
     enabled_feature_groups,
+    feature_group_columns,
+    feature_group_dims,
     load_all_passes,
     split_passes_by_time,
 )
@@ -207,6 +209,8 @@ def main() -> None:
             fit_scalers=False,
             extra_feature_keys=_optional_feature_keys(cfg),
             feature_groups=enabled_feature_groups(cfg),
+            feature_group_dims=feature_group_dims(cfg),
+            feature_group_columns=feature_group_columns(cfg),
             target_names=list(cfg["targets"]["primary"]) + list(cfg["targets"].get("auxiliary", [])),
         )
         pred, true = _predict(model, ds, device, args.batch_size)

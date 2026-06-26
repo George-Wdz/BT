@@ -88,7 +88,7 @@ def train_one_epoch(model, loader, optimizer, cfg, device):
     grad_clip = cfg["training"].get("grad_clip", 1.0)
     for batch in loader:
         features = batch["features"].to(device)
-        mask = batch["mask"].to(device)
+        mask = batch["mask"].to(device).bool()
         sat_idx = batch["satellite_idx"].to(device).long()
         labels = batch["labels"].to(device)
         labels_phys = batch["labels_phys"].to(device)

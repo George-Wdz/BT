@@ -47,6 +47,7 @@ python_cmd=(
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
+  --position-mode raw6                                                                            # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；消融复用 NPZ 时需与 NPZ 特征一致
   --val-strategy stratified_all                                                                  # 数据划分策略，见脚本顶部说明
   --iterations 1                                                                                 # 每个消融组合的独立训练重复次数
   --epochs 100                                                                                   # 每次训练最大 epoch

@@ -68,14 +68,20 @@ def enabled_feature_groups(cfg: dict) -> list[str]:
 def feature_group_dims(cfg: dict, groups: list[str] | None = None) -> list[int]:
     groups = groups or enabled_feature_groups(cfg)
     dims = []
-    link_dim = len(cfg.get("features", {}).get("link", []))
+    features_cfg = cfg.get("features", {})
+    link_dim = len(features_cfg.get("link", []))
     if link_dim <= 0:
         link_dim = int(cfg["model"]["feature_group_dims"][0])
+    position_dim = len(features_cfg.get("position", []))
+    if position_dim <= 0:
+        position_dim = FEATURE_GROUP_DIMS["position"]
     for group in groups:
         if group in ("link", "dry_delta"):
             dims.append(link_dim)
         elif group == "dry_delta_summary":
             dims.append(link_dim * 6)
+        elif group == "position":
+            dims.append(position_dim)
         else:
             dims.append(FEATURE_GROUP_DIMS[group])
     return dims
@@ -102,6 +108,27 @@ def validate_feature_config(cfg: dict) -> None:
         raise ValueError("features.enabled_groups includes dry_delta_summary but dry_baseline.add_summary is false")
     if "image_weather" in groups and not cfg.get("image_weather", {}).get("enabled", False):
         raise ValueError("features.enabled_groups includes image_weather but image_weather.enabled is false")
+
+
+def feature_group_columns(cfg: dict) -> dict[str, list[str]]:
+    features_cfg = cfg.get("features", {})
+    out = {}
+    for group in enabled_feature_groups(cfg):
+        if group in ("link", "dry_delta"):
+            cols = list(features_cfg.get("link", []))
+            if cols:
+                out[group] = cols
+        elif group == "position":
+            cols = list(features_cfg.get("position", []))
+            if cols:
+                out[group] = cols
+        elif group == "ground_weather":
+            cols = list(features_cfg.get("ground_weather", []))
+            if cols:
+                out[group] = cols
+        elif group == "image_weather":
+            out[group] = ["prob_sunny", "prob_cloudy", "prob_rain", "image_available"]
+    return out
 
 
 def _optional_feature_keys(cfg: dict) -> list[str]:
@@ -504,6 +531,8 @@ def data_provider(cfg: dict,
         scaler_X=scaler_X, scaler_y=scaler_y, fit_scalers=fit,
         extra_feature_keys=_optional_feature_keys(cfg),
         feature_groups=enabled_feature_groups(cfg),
+        feature_group_dims=feature_group_dims(cfg),
+        feature_group_columns=feature_group_columns(cfg),
         target_names=list(cfg["targets"]["primary"]) + list(cfg["targets"].get("auxiliary", [])),
     )
 

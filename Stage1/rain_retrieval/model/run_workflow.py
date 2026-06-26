@@ -32,9 +32,48 @@ DEFAULT_WEIGHTS = (
     / "20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt"
 )
 
+POSITION_FEATURES = {
+    "raw6": [
+        "longitude",
+        "latitude",
+        "satAltitude",
+        "posLongitude",
+        "posLatitude",
+        "altitude",
+    ],
+    "raw6_geo2": [
+        "longitude",
+        "latitude",
+        "satAltitude",
+        "posLongitude",
+        "posLatitude",
+        "altitude",
+        "slant_range_km",
+        "elevation_deg",
+    ],
+    "raw6_geo4": [
+        "longitude",
+        "latitude",
+        "satAltitude",
+        "posLongitude",
+        "posLatitude",
+        "altitude",
+        "slant_range_km",
+        "elevation_deg",
+        "azimuth_sin",
+        "azimuth_cos",
+    ],
+    "geo4": [
+        "slant_range_km",
+        "elevation_deg",
+        "azimuth_sin",
+        "azimuth_cos",
+    ],
+}
+
 GROUP_DIMS = {
     "link": 4,
-    "position": 6,
+    "position": len(POSITION_FEATURES["raw6"]),
     "ground_weather": 3,
     "image_weather": 4,
     "dry_delta": 4,
@@ -94,10 +133,21 @@ def parse_groups(groups: str) -> list[str]:
     return out
 
 
-def feature_overrides(groups: str) -> list[str]:
+def position_features(mode: str) -> list[str]:
+    try:
+        return POSITION_FEATURES[mode]
+    except KeyError as exc:
+        raise ValueError(
+            f"unknown position mode: {mode}; available={sorted(POSITION_FEATURES)}"
+        ) from exc
+
+
+def feature_overrides(groups: str, position_mode: str = "raw6") -> list[str]:
     parsed = parse_groups(groups)
-    dims = [GROUP_DIMS[g] for g in parsed]
+    pos_cols = position_features(position_mode)
+    dims = [len(pos_cols) if g == "position" else GROUP_DIMS[g] for g in parsed]
     return [
+        f"features.position=[{','.join(pos_cols)}]",
         f"features.enabled_groups=[{','.join(parsed)}]",
         f"model.input_dim={sum(dims)}",
         f"model.feature_group_dims=[{','.join(str(d) for d in dims)}]",
@@ -340,6 +390,8 @@ def build_or_reuse_dataset(args: argparse.Namespace, paths: Paths, image_csv: Pa
         str(image_csv),
         "--image-tolerance",
         args.image_tolerance,
+        "--position-mode",
+        args.position_mode,
     ]
     if args.incremental_npz and source.exists():
         cmd.extend(["--lookback-minutes", str(args.incremental_lookback_minutes)])
@@ -381,7 +433,7 @@ def training_overrides(
         f"dry_baseline.image_rain_prob_threshold={args.dry_baseline_image_rain_prob_threshold}",
         f"dry_baseline.require_image_available={str(args.dry_baseline_require_image_available).lower()}",
         f"dry_baseline.min_sunny_prob={args.dry_baseline_min_sunny_prob}",
-        *feature_overrides(feature_groups),
+        *feature_overrides(feature_groups, args.position_mode),
         "model.use_summary_token=true",
         "targets.auxiliary=[rain_rate_mean,rain_rate_max,rainy_ratio]",
         f"training.auxiliary_loss_weight={args.auxiliary_loss_weight}",
@@ -730,6 +782,12 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--vision-batch-size", type=int, default=env_int("VISION_BATCH_SIZE", env_int("BATCH_SIZE", 64)))
     parser.add_argument("--vision-num-workers", type=int, default=env_int("VISION_NUM_WORKERS", 0))
     parser.add_argument("--feature-groups", default=env("FEATURE_GROUPS", VARIANT_GROUPS["full_a"]))
+    parser.add_argument(
+        "--position-mode",
+        default=env("POSITION_MODE", "raw6"),
+        choices=sorted(POSITION_FEATURES),
+        help="Position feature mode: raw6, raw6_geo2, raw6_geo4, or geo4.",
+    )
     parser.add_argument("--use-channel-attention", action=argparse.BooleanOptionalAction, default=env_bool("USE_CHANNEL_ATTENTION", False))
     parser.add_argument("--val-strategy", default=env("VAL_STRATEGY", "stratified_all"))
     parser.add_argument("--iterations", type=int, default=env_int("ITERATIONS", 1))

@@ -28,6 +28,46 @@ from data.preprocessing import (  # noqa: E402
 )
 
 
+POSITION_FEATURES = {
+    "raw6": [
+        "longitude",
+        "latitude",
+        "satAltitude",
+        "posLongitude",
+        "posLatitude",
+        "altitude",
+    ],
+    "raw6_geo2": [
+        "longitude",
+        "latitude",
+        "satAltitude",
+        "posLongitude",
+        "posLatitude",
+        "altitude",
+        "slant_range_km",
+        "elevation_deg",
+    ],
+    "raw6_geo4": [
+        "longitude",
+        "latitude",
+        "satAltitude",
+        "posLongitude",
+        "posLatitude",
+        "altitude",
+        "slant_range_km",
+        "elevation_deg",
+        "azimuth_sin",
+        "azimuth_cos",
+    ],
+    "geo4": [
+        "slant_range_km",
+        "elevation_deg",
+        "azimuth_sin",
+        "azimuth_cos",
+    ],
+}
+
+
 def latest_db_time(db_path: str) -> pd.Timestamp | None:
     with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
         row = conn.execute("SELECT max(localTime) FROM phy_data").fetchone()
@@ -71,6 +111,7 @@ def main() -> None:
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--image-csv", required=True)
     parser.add_argument("--image-tolerance", default="10min")
+    parser.add_argument("--position-mode", choices=sorted(POSITION_FEATURES), default="raw6")
     parser.add_argument("--lookback-minutes", type=float, default=20.0)
     parser.add_argument("--strict-source-filters", action="store_true")
     args = parser.parse_args()
@@ -82,16 +123,18 @@ def main() -> None:
 
     feature_cols = {
         "link": ["phyRssi", "rssi", "snr", "lastCniValue"],
-        "position": [
-            "longitude",
-            "latitude",
-            "satAltitude",
-            "posLongitude",
-            "posLatitude",
-            "altitude",
-        ],
+        "position": POSITION_FEATURES[args.position_mode],
         "ground_weather": ["temperature", "humidity", "pressure"],
     }
+    expected_position_dim = len(feature_cols["position"])
+    if old_passes:
+        old_position_dim = int(np.asarray(old_passes[0]["position_features"]).shape[1])
+        if old_position_dim != expected_position_dim:
+            print(
+                "Existing NPZ position dim mismatch "
+                f"({old_position_dim} != {expected_position_dim}); building full dataset."
+            )
+            old_passes = []
     image_weather_cfg = {
         "enabled": True,
         "csv_path": args.image_csv,

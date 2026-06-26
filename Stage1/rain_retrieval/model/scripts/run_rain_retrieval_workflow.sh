@@ -41,7 +41,7 @@ cd /home/wdz/BT/Stage1/rain_retrieval/model
 
 python_cmd=(
   env
-  CUDA_VISIBLE_DEVICES=2                                                                        # 训练使用的 GPU 编号；如需沿用当前环境，删除本行
+  CUDA_VISIBLE_DEVICES=4                                                                        # 训练使用的 GPU 编号；如需沿用当前环境，删除本行
   python3 run_workflow.py rain
   --experiment rain_retrieval                                                                    # 实验名称，参与默认 dataset_name 命名
   --db-path /home/wdz/satellite_data/satellite_data.db                                           # 卫星链路和气象数据库路径
@@ -62,6 +62,7 @@ python_cmd=(
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
   --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，决定 input_dim 和 feature_group_dims
+  --position-mode raw6_geo2                                                                            # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；新增几何特征需重建 NPZ
   --val-strategy stratified_all                                                                  # 数据划分策略，见脚本顶部说明
   --iterations 3                                                                                 # 独立训练重复次数
   --epochs 100                                                                                   # 每次训练最大 epoch

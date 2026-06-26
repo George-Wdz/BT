@@ -83,7 +83,8 @@ def load_position_data(
     where_sql = """
         SELECT localTime, satId,
                longitude, latitude, satAltitude,
-               posLongitude, posLatitude, altitude
+               posLongitude, posLatitude, altitude,
+               ecefPx, ecefPy, ecefPz
         FROM position_data
     """
     if strict_source_filters:

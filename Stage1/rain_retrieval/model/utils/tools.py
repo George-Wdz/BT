@@ -68,7 +68,7 @@ class EarlyStopping:
 def _move_batch(batch, device):
     return {
         "features": batch["features"].to(device),
-        "mask": batch["mask"].to(device),
+        "mask": batch["mask"].to(device).bool(),
         "satellite_idx": batch["satellite_idx"].to(device).long(),
         "labels": batch["labels"].to(device),
         "labels_phys": batch["labels_phys"].to(device),

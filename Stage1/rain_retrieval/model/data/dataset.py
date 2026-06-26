@@ -71,11 +71,15 @@ class PassDataset(Dataset):
                  fit_scalers: bool = False,
                  extra_feature_keys: List[str] = None,
                  feature_groups: List[str] = None,
+                 feature_group_dims: List[int] = None,
+                 feature_group_columns: Dict[str, List[str]] = None,
                  target_names: List[str] = None):
         self.max_len = max_len
         self.sat_mapper = sat_mapper
         self.extra_feature_keys = extra_feature_keys or []
         self.feature_groups = feature_groups
+        self.feature_group_dims = feature_group_dims
+        self.feature_group_columns = feature_group_columns or {}
         self.target_names = target_names or [
             "pass_rainfall_mm", "wind_speed", "wind_direction"
         ]
@@ -101,13 +105,35 @@ class PassDataset(Dataset):
                     parts.append(p[key])
             else:
                 parts = []
-                for group in self.feature_groups:
+                for i, group in enumerate(self.feature_groups):
                     key = FEATURE_GROUP_TO_PASS_KEY.get(group)
                     if key is None:
                         raise KeyError(f"unknown feature group: {group}")
                     if key not in p:
                         raise KeyError(f"pass is missing feature group '{group}' ({key})")
-                    parts.append(p[key])
+                    arr = p[key]
+                    expected_cols = self.feature_group_columns.get(group)
+                    stored_cols = p.get("feature_columns", {}).get(group)
+                    if expected_cols is not None and stored_cols is not None:
+                        missing = [c for c in expected_cols if c not in stored_cols]
+                        if missing:
+                            raise ValueError(
+                                f"feature group '{group}' is missing columns {missing}; "
+                                f"rebuild NPZ with matching features"
+                            )
+                        col_idx = [stored_cols.index(c) for c in expected_cols]
+                        arr = arr[:, col_idx]
+                    if self.feature_group_dims is not None:
+                        expected_dim = int(self.feature_group_dims[i])
+                        actual_dim = int(arr.shape[1])
+                        if actual_dim < expected_dim:
+                            raise ValueError(
+                                f"feature group '{group}' has dim {actual_dim}, "
+                                f"but config expects {expected_dim}; rebuild NPZ with matching features"
+                            )
+                        if actual_dim > expected_dim:
+                            arr = arr[:, :expected_dim]
+                    parts.append(arr)
             feat = np.concatenate(parts, axis=1).astype(np.float32)   # (T, C)
             # 截断超长过境
             if len(feat) > max_len:

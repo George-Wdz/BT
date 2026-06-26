@@ -25,6 +25,8 @@ class PatchEmbedding(nn.Module):
     def forward(self, x, mask=None):
         # x: (B, T, C), mask: (B, T) bool
         B, T, C = x.shape
+        if mask is not None and mask.dtype != torch.bool:
+            mask = mask.bool()
         x_p = x.unfold(1, self.patch_len, self.stride)   # (B, N, C, P)
         x_p = x_p.permute(0, 1, 3, 2).contiguous()       # (B, N, P, C)
         N = x_p.shape[1]
@@ -33,7 +35,7 @@ class PatchEmbedding(nn.Module):
 
         if mask is not None:
             m_p = mask.unfold(1, self.patch_len, self.stride)  # (B, N, P)
-            patch_mask = m_p.any(dim=-1)
+            patch_mask = m_p.any(dim=-1).bool()
         else:
             patch_mask = torch.ones(B, N, dtype=torch.bool, device=x.device)
         return x_p, patch_mask
@@ -60,6 +62,8 @@ class GroupedPatchEmbedding(nn.Module):
     def forward(self, x, mask=None):
         # x: (B, T, sum(group_dims))
         B, T, _ = x.shape
+        if mask is not None and mask.dtype != torch.bool:
+            mask = mask.bool()
         # 切分通道
         chunks = torch.split(x, self.group_dims, dim=-1)
         group_tokens = []
@@ -76,7 +80,7 @@ class GroupedPatchEmbedding(nn.Module):
 
         if mask is not None:
             m_p = mask.unfold(1, self.patch_len, self.stride)
-            patch_mask = m_p.any(dim=-1)  # (B, N)
+            patch_mask = m_p.any(dim=-1).bool()  # (B, N)
         else:
             patch_mask = torch.ones(B, out.size(1), dtype=torch.bool, device=x.device)
         return out, patch_mask
@@ -149,6 +153,8 @@ class EncoderLayer(nn.Module):
         self.drop = nn.Dropout(dropout)
 
     def forward(self, x, key_padding_mask=None):
+        if key_padding_mask is not None and key_padding_mask.dtype != torch.bool:
+            key_padding_mask = key_padding_mask.bool()
         h = self.norm1(x)
         a, _ = self.self_attn(h, h, h, key_padding_mask=key_padding_mask)
         x = x + self.drop(a)
@@ -182,6 +188,8 @@ class TwoStageEncoderLayer(nn.Module):
 
     def forward(self, x, key_padding_mask=None):
         # x: (B, N, G, d), key_padding_mask: (B, N)
+        if key_padding_mask is not None and key_padding_mask.dtype != torch.bool:
+            key_padding_mask = key_padding_mask.bool()
         B, N, G, D = x.shape
 
         # Stage 1: 时间维 attention，每个group独立
@@ -190,6 +198,7 @@ class TwoStageEncoderLayer(nn.Module):
         # 每个group共享同样的patch_mask，重复G次
         if key_padding_mask is not None:
             time_mask = key_padding_mask.unsqueeze(1).expand(-1, G, -1).reshape(B * G, N)
+            time_mask = time_mask.bool()
         else:
             time_mask = None
         a, _ = self.time_attn(h, h, h, key_padding_mask=time_mask)
@@ -225,6 +234,8 @@ class DecoderLayer(nn.Module):
         self.drop = nn.Dropout(dropout)
 
     def forward(self, x, enc_out, enc_padding_mask=None):
+        if enc_padding_mask is not None and enc_padding_mask.dtype != torch.bool:
+            enc_padding_mask = enc_padding_mask.bool()
         h = self.norm1(x)
         a, _ = self.self_attn(h, h, h)
         x = x + self.drop(a)
@@ -329,6 +340,8 @@ class PatchEncoderDecoder(nn.Module):
         mask: (B, T) bool  True=真实数据, False=padding
         satellite_idx: (B,) long
         """
+        if mask.dtype != torch.bool:
+            mask = mask.bool()
         B = features.size(0)
         sat_emb = self.sat_proj(self.sat_embedding(satellite_idx))  # (B, d)
 

@@ -24,8 +24,13 @@ MIN_PASS_POINTS = 10
 LINK_COLS = ["phyRssi", "rssi", "snr", "lastCniValue", "freqOffset", "td"]
 POS_COLS = ["longitude", "latitude", "satAltitude",
             "posLongitude", "posLatitude", "altitude"]
+POSITION_GEO_COLS = ["slant_range_km", "elevation_deg", "azimuth_sin", "azimuth_cos"]
 TARGET_COLS = ["pass_rainfall_mm", "wind_speed", "wind_direction"]
 IMAGE_WEATHER_COLS = ["prob_sunny", "prob_cloudy", "prob_rain", "image_available"]
+
+WGS84_A = 6378137.0
+WGS84_F = 1.0 / 298.257223563
+WGS84_E2 = WGS84_F * (2.0 - WGS84_F)
 
 
 def merge_ground_weather(gw: pd.DataFrame, station: pd.DataFrame) -> pd.DataFrame:
@@ -57,6 +62,68 @@ def load_image_weather_predictions(csv_path: str | None) -> pd.DataFrame | None:
         raise ValueError(f"image weather CSV has no valid timestamp/probability rows: {path}")
     df["image_available"] = 1.0
     return df.set_index("timestamp")[IMAGE_WEATHER_COLS].sort_index()
+
+
+def geodetic_to_ecef(lon_deg: pd.Series, lat_deg: pd.Series,
+                     height_m: pd.Series) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Convert WGS84 geodetic coordinates to ECEF meters."""
+    lon = np.deg2rad(lon_deg.to_numpy(dtype=np.float64))
+    lat = np.deg2rad(lat_deg.to_numpy(dtype=np.float64))
+    h = height_m.to_numpy(dtype=np.float64)
+    sin_lat = np.sin(lat)
+    cos_lat = np.cos(lat)
+    n = WGS84_A / np.sqrt(1.0 - WGS84_E2 * sin_lat * sin_lat)
+    x = (n + h) * cos_lat * np.cos(lon)
+    y = (n + h) * cos_lat * np.sin(lon)
+    z = (n * (1.0 - WGS84_E2) + h) * sin_lat
+    return x, y, z
+
+
+def add_position_geometry(pos: pd.DataFrame) -> pd.DataFrame:
+    """Append line-of-sight geometry from satellite/terminal positions."""
+    required = [
+        "posLongitude", "posLatitude", "altitude",
+        "ecefPx", "ecefPy", "ecefPz",
+    ]
+    missing = [c for c in required if c not in pos.columns]
+    if missing:
+        raise ValueError(f"position geometry requires columns: {missing}")
+
+    out = pos.copy()
+    gx, gy, gz = geodetic_to_ecef(out["posLongitude"], out["posLatitude"], out["altitude"])
+    sx = out["ecefPx"].to_numpy(dtype=np.float64)
+    sy = out["ecefPy"].to_numpy(dtype=np.float64)
+    sz = out["ecefPz"].to_numpy(dtype=np.float64)
+
+    los_x = sx - gx
+    los_y = sy - gy
+    los_z = sz - gz
+    slant_m = np.sqrt(los_x * los_x + los_y * los_y + los_z * los_z)
+
+    lon = np.deg2rad(out["posLongitude"].to_numpy(dtype=np.float64))
+    lat = np.deg2rad(out["posLatitude"].to_numpy(dtype=np.float64))
+    up_x = np.cos(lat) * np.cos(lon)
+    up_y = np.cos(lat) * np.sin(lon)
+    up_z = np.sin(lat)
+    east_x = -np.sin(lon)
+    east_y = np.cos(lon)
+    east_z = np.zeros_like(lon)
+    north_x = -np.sin(lat) * np.cos(lon)
+    north_y = -np.sin(lat) * np.sin(lon)
+    north_z = np.cos(lat)
+
+    east_m = los_x * east_x + los_y * east_y + los_z * east_z
+    north_m = los_x * north_x + los_y * north_y + los_z * north_z
+    up_m = los_x * up_x + los_y * up_y + los_z * up_z
+    denom = np.maximum(slant_m, 1e-6)
+    elevation_rad = np.arcsin(np.clip(up_m / denom, -1.0, 1.0))
+    azimuth_rad = np.arctan2(east_m, north_m)
+
+    out["slant_range_km"] = (slant_m / 1000.0).astype(np.float32)
+    out["elevation_deg"] = np.rad2deg(elevation_rad).astype(np.float32)
+    out["azimuth_sin"] = np.sin(azimuth_rad).astype(np.float32)
+    out["azimuth_cos"] = np.cos(azimuth_rad).astype(np.float32)
+    return out
 
 
 def _cumulative_at(weather_station: pd.DataFrame, timestamp: pd.Timestamp) -> float | None:
@@ -168,6 +235,10 @@ def segment_passes(phy: pd.DataFrame, pos: pd.DataFrame,
                 "timestamps": idx.values,
                 "link_features": seg.loc[idx, link_cols].values.astype(np.float32),
                 "position_features": seg_pos.loc[idx, pos_cols].values.astype(np.float32),
+                "feature_columns": {
+                    "link": list(link_cols),
+                    "position": list(pos_cols),
+                },
             })
 
     print(f"Segmented {len(passes)} valid passes "
@@ -238,6 +309,12 @@ def attach_features_and_labels(passes: List[Dict],
         enriched.append({
             **p,
             "ground_weather": gw_aligned.values.astype(np.float32),
+            "feature_columns": {
+                **p.get("feature_columns", {}),
+                "ground_weather": list(gw_cols),
+                **({"image_weather": list(IMAGE_WEATHER_COLS)}
+                   if image_features is not None else {}),
+            },
             **({"image_weather": image_features.astype(np.float32)}
                if image_features is not None else {}),
             "labels": labels,  # (3,) [pass_rainfall_mm, wind_speed, wind_direction]
@@ -388,7 +465,11 @@ def build_pass_dataset(db_path: str, output_path: str = None,
         strict_source_filters=strict_source_filters,
         start_time=start_time,
         end_time=end_time,
-    ).set_index("localTime")[pos_cols].sort_index()
+    ).set_index("localTime").sort_index()
+    if any(c in pos_cols for c in POSITION_GEO_COLS):
+        print("Computing position geometry features...")
+        pos = add_position_geometry(pos)
+    pos = pos[pos_cols].sort_index()
 
     print("Loading weather_data from DB...")
     gw = load_ground_weather(db_path, start_time=start_time, end_time=end_time)
