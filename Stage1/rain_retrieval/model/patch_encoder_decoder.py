@@ -156,7 +156,10 @@ class EncoderLayer(nn.Module):
         if key_padding_mask is not None and key_padding_mask.dtype != torch.bool:
             key_padding_mask = key_padding_mask.bool()
         h = self.norm1(x)
-        a, _ = self.self_attn(h, h, h, key_padding_mask=key_padding_mask)
+        # PyTorch 2.0.1 eval fast path warns on bool key_padding_mask internally.
+        # Cloning value preserves self-attention math while using the stable path.
+        v = h if self.training else h.clone()
+        a, _ = self.self_attn(h, h, v, key_padding_mask=key_padding_mask)
         x = x + self.drop(a)
         x = x + self.drop(self.ffn(self.norm2(x)))
         return x
@@ -201,7 +204,8 @@ class TwoStageEncoderLayer(nn.Module):
             time_mask = time_mask.bool()
         else:
             time_mask = None
-        a, _ = self.time_attn(h, h, h, key_padding_mask=time_mask)
+        v = h if self.training else h.clone()
+        a, _ = self.time_attn(h, h, v, key_padding_mask=time_mask)
         a = a.reshape(B, G, N, D).permute(0, 2, 1, 3)  # (B, N, G, d)
         x = x + self.drop(a)
 

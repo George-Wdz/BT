@@ -788,7 +788,29 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         choices=sorted(POSITION_FEATURES),
         help="Position feature mode: raw6, raw6_geo2, raw6_geo4, or geo4.",
     )
-    parser.add_argument("--use-channel-attention", action=argparse.BooleanOptionalAction, default=env_bool("USE_CHANNEL_ATTENTION", False))
+    channel_default = env_bool("CHANNEL_WISE", env_bool("USE_CHANNEL_ATTENTION", False))
+    parser.add_argument(
+        "--channel-wise",
+        type=parse_bool,
+        dest="use_channel_attention",
+        default=channel_default,
+        metavar="{0,1}",
+        help="0: channel-mixing encoder; 1: two-stage/channel-wise attention encoder.",
+    )
+    parser.add_argument(
+        "--use-channel-attention",
+        dest="use_channel_attention",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Backward-compatible alias for --channel-wise 1.",
+    )
+    parser.add_argument(
+        "--no-use-channel-attention",
+        dest="use_channel_attention",
+        action="store_false",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--val-strategy", default=env("VAL_STRATEGY", "stratified_all"))
     parser.add_argument("--iterations", type=int, default=env_int("ITERATIONS", 1))
     parser.add_argument("--epochs", type=int, default=env_int("EPOCHS", 100))

@@ -62,7 +62,8 @@ python_cmd=(
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
   --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，决定 input_dim 和 feature_group_dims
-  --position-mode raw6_geo2                                                                            # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；新增几何特征需重建 NPZ
+  --position-mode raw6_geo4                                                                            # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；新增几何特征需重建 NPZ
+  --channel-wise 0                                                                               # 通道建模开关：0=channel-mixing；1=two-stage/channel-wise attention
   --val-strategy stratified_all                                                                  # 数据划分策略，见脚本顶部说明
   --iterations 3                                                                                 # 独立训练重复次数
   --epochs 100                                                                                   # 每次训练最大 epoch
