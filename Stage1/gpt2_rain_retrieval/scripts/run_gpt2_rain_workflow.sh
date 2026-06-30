@@ -1,52 +1,61 @@
 #!/usr/bin/env bash
 # GPT2 baseline workflow for Stage1 rainfall retrieval.
 #
-# 默认复用已有 NPZ，只比较模型结构，不重新生成照片标签或重建数据集。
-# 用法示例：
-#   单卡：
-#     bash scripts/run_gpt2_rain_workflow.sh --cuda-visible-devices 0
+# Examples:
+#   bash scripts/run_gpt2_rain_workflow.sh --cuda-visible-devices 0
+#   bash scripts/run_gpt2_rain_workflow.sh --ddp --cuda-visible-devices 0,1,2,3
+#   bash scripts/run_gpt2_rain_workflow.sh --dry-run --ddp --cuda-visible-devices 0,1
 #
-#   多卡 DDP，会自动按可见 GPU 数设置 torchrun --nproc_per_node：
-#     bash scripts/run_gpt2_rain_workflow.sh --ddp --cuda-visible-devices 0,1,2,3
-#
-#   追加训练配置，参数会原样传给 train_gpt2_rain.py：
-#     bash scripts/run_gpt2_rain_workflow.sh --ddp --cuda-visible-devices 0,1 \
-#       --set data.val_strategy=time --set model.freeze_gpt2=ln_wpe
-#
-#   只打印命令，不启动训练：
-#     bash scripts/run_gpt2_rain_workflow.sh --dry-run --ddp --cuda-visible-devices 0,1
+# Extra arguments are forwarded to train_gpt2_rain.py, for example:
+#   bash scripts/run_gpt2_rain_workflow.sh --ddp --cuda-visible-devices 0,1 \
+#     --set data.val_strategy=time --set model.freeze_gpt2=ln_wpe
 
 set -euo pipefail
 
 cd /home/wdz/BT/Stage1/gpt2_rain_retrieval
 
-# -----------------------
-# 可调配置
-# -----------------------
+# -----------------------------
+# Runtime options
+# -----------------------------
 PYTHON=python3
-cuda_visible_devices="${CUDA_VISIBLE_DEVICES:-0}"          # 训练可见 GPU；多卡写逗号分隔，如 0,1,2,3
-eval_cuda_visible_devices=0                                # 评估使用单卡即可
-ddp=0                                                      # 0=单进程训练；1=DDP 多卡训练
-dry_run=0                                                  # 1=只打印最终命令，不执行
+cuda_visible_devices="${CUDA_VISIBLE_DEVICES:-0}"    # Training GPUs, e.g. 0 or 0,1,2,3
+eval_cuda_visible_devices=0                          # Evaluation uses one GPU
+ddp=0                                                # 0=single process, 1=torchrun DDP
+dry_run=0                                            # 1=print commands only
 
-dataset_npz=/home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260626_1804.npz
-image_label_csv=/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv
-gpt2_model_dir=/home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/gpt2
+# -----------------------------
+# Paths
+# -----------------------------
+run_ts="$(date +%Y%m%d_%H%M)"
+checkpoint_base="/home/wdz/BT/Stage1/gpt2_rain_retrieval/checkpoints/gpt2_rain_${run_ts}"
+result_dir="/home/wdz/BT/Stage1/gpt2_rain_retrieval/runs/gpt2_rain_${run_ts}"
+log_dir="/home/wdz/BT/Stage1/gpt2_rain_retrieval/logs"
 
-val_strategy=stratified_before_test                        # stratified_all / stratified_before_test / time
-gpt2_layers=6                                              # 使用 GPT2 前几层
-freeze_gpt2=all                                            # all / ln_wpe / none
-iterations=3
-batch_size=32                                              # DDP 时表示每张 GPU 的 batch size
-epochs=100
-patience=15
-lr=0.0001
+dataset_npz="/home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260626_1804.npz"
+image_label_csv="/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv"
+gpt2_model_dir="/home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/gpt2"
 
+# -----------------------------
+# Experiment options
+# -----------------------------
+val_strategy=stratified_before_test                  # stratified_all / stratified_before_test / time
 position_columns="[longitude,latitude,satAltitude,posLongitude,posLatitude,altitude,slant_range_km,elevation_deg,azimuth_sin,azimuth_cos]"
 input_dim=25
 feature_group_dims="[4,10,3,4,4]"
 
-extra_args=()
+gpt2_layers=6
+freeze_gpt2=all                                      # all / ln_wpe / none
+
+iterations=3
+batch_size=32                                        # Per-GPU batch size when --ddp is enabled
+epochs=100
+patience=15
+lr=0.0001
+
+# -----------------------------
+# Script-only flags
+# -----------------------------
+train_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ddp)
@@ -74,71 +83,45 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      extra_args+=("$1")
+      train_args+=("$1")
       shift
       ;;
   esac
 done
 
 count_visible_gpus() {
-  local visible="$1"
-  if [[ -n "$visible" && "$visible" != "all" ]]; then
-    "$PYTHON" - "$visible" <<'PY'
-import sys
-visible = sys.argv[1].strip()
-items = [x.strip() for x in visible.split(",") if x.strip()]
-print(len(items))
-PY
-  else
-    "$PYTHON" - <<'PY'
-import torch
-print(torch.cuda.device_count())
-PY
-  fi
+  local visible="${1// /}"
+  local old_ifs="$IFS"
+  IFS=","
+  read -ra ids <<< "$visible"
+  IFS="$old_ifs"
+  echo "${#ids[@]}"
 }
 
 nproc_per_node=1
+launcher=("$PYTHON")
 if [[ "$ddp" -eq 1 ]]; then
   nproc_per_node="$(count_visible_gpus "$cuda_visible_devices")"
   if [[ "$nproc_per_node" -lt 2 ]]; then
-    echo "[ERROR] --ddp requires at least 2 visible GPUs, got: $cuda_visible_devices" >&2
+    echo "[ERROR] --ddp needs at least two visible GPUs; got '$cuda_visible_devices'." >&2
     exit 1
   fi
+  launcher=(torchrun --standalone --nproc_per_node "$nproc_per_node")
 fi
 
-RUN_TS="$(date +%Y%m%d_%H%M)"
-CHECKPOINT_BASE="/home/wdz/BT/Stage1/gpt2_rain_retrieval/checkpoints/gpt2_rain_${RUN_TS}"
-RESULT_DIR="/home/wdz/BT/Stage1/gpt2_rain_retrieval/runs/gpt2_rain_${RUN_TS}"
-LOG_DIR="/home/wdz/BT/Stage1/gpt2_rain_retrieval/logs"
-mkdir -p "$CHECKPOINT_BASE" "$RESULT_DIR" "$LOG_DIR"
+mkdir -p "$checkpoint_base" "$result_dir" "$log_dir"
 
-echo "[INFO] run_ts=$RUN_TS"
+echo "[INFO] run_ts=$run_ts"
 echo "[INFO] ddp=$ddp nproc_per_node=$nproc_per_node cuda_visible_devices=$cuda_visible_devices"
-echo "[INFO] checkpoint_base=$CHECKPOINT_BASE"
-echo "[INFO] result_dir=$RESULT_DIR"
+echo "[INFO] checkpoint_base=$checkpoint_base"
+echo "[INFO] result_dir=$result_dir"
 
 python_cmd=(
   env
   CUDA_VISIBLE_DEVICES="$cuda_visible_devices"
-)
-
-if [ "$ddp" -eq 1 ]; then
-  python_cmd+=(
-    torchrun
-    --standalone
-    --nproc_per_node "$nproc_per_node"
-    train_gpt2_rain.py
-  )
-else
-  python_cmd+=(
-    "$PYTHON"
-    train_gpt2_rain.py
-  )
-fi
-
-python_cmd+=(
+  "${launcher[@]}" train_gpt2_rain.py
   --config configs/default.yaml
-  --set checkpoints="$CHECKPOINT_BASE"
+  --set checkpoints="$checkpoint_base"
   --set data.pass_dataset_path="$dataset_npz"
   --set data.val_strategy="$val_strategy"
   --set image_weather.csv_path="$image_label_csv"
@@ -155,41 +138,42 @@ python_cmd+=(
   --set training.lr="$lr"
 )
 
+eval_cmd=(
+  env
+  CUDA_VISIBLE_DEVICES="$eval_cuda_visible_devices"
+  "$PYTHON" evaluate_gpt2_checkpoint.py
+  --checkpoint-dir "<best_checkpoint>"
+  --batch-size 128
+  --out-csv "$result_dir/gpt2_rain_${run_ts}_predictions.csv"
+  --test-csv "$result_dir/gpt2_rain_${run_ts}_test_predictions.csv"
+  --metrics-csv "$result_dir/gpt2_rain_${run_ts}_metrics.csv"
+)
+
 if [[ "$dry_run" -eq 1 ]]; then
   echo "[DRY-RUN] train command:"
-  printf ' %q' "${python_cmd[@]}" "${extra_args[@]}"
+  printf ' %q' "${python_cmd[@]}" "${train_args[@]}"
   printf '\n'
   echo "[DRY-RUN] eval command:"
-  printf ' %q' env CUDA_VISIBLE_DEVICES="$eval_cuda_visible_devices" "$PYTHON" evaluate_gpt2_checkpoint.py \
-    --checkpoint-dir '<best_checkpoint>' \
-    --batch-size 128 \
-    --out-csv "$RESULT_DIR/gpt2_rain_${RUN_TS}_predictions.csv" \
-    --test-csv "$RESULT_DIR/gpt2_rain_${RUN_TS}_test_predictions.csv" \
-    --metrics-csv "$RESULT_DIR/gpt2_rain_${RUN_TS}_metrics.csv"
+  printf ' %q' "${eval_cmd[@]}"
   printf '\n'
   exit 0
 fi
 
-"${python_cmd[@]}" "${extra_args[@]}" | tee "$LOG_DIR/gpt2_rain_${RUN_TS}_train.log"
+"${python_cmd[@]}" "${train_args[@]}" | tee "$log_dir/gpt2_rain_${run_ts}_train.log"
 
-BEST_CHECKPOINT="$(cat "$CHECKPOINT_BASE/best_iteration_checkpoint.txt")"
+best_checkpoint="$(cat "$checkpoint_base/best_iteration_checkpoint.txt")"
+eval_cmd[5]="$best_checkpoint"
 
-env CUDA_VISIBLE_DEVICES="$eval_cuda_visible_devices" "$PYTHON" evaluate_gpt2_checkpoint.py \
-  --checkpoint-dir "$BEST_CHECKPOINT" \
-  --batch-size 128 \
-  --out-csv "$RESULT_DIR/gpt2_rain_${RUN_TS}_predictions.csv" \
-  --test-csv "$RESULT_DIR/gpt2_rain_${RUN_TS}_test_predictions.csv" \
-  --metrics-csv "$RESULT_DIR/gpt2_rain_${RUN_TS}_metrics.csv" \
-  | tee "$LOG_DIR/gpt2_rain_${RUN_TS}_eval.log"
+"${eval_cmd[@]}" | tee "$log_dir/gpt2_rain_${run_ts}_eval.log"
 
 {
-  echo "run_ts,$RUN_TS"
+  echo "run_ts,$run_ts"
   echo "ddp,$ddp"
   echo "nproc_per_node,$nproc_per_node"
   echo "cuda_visible_devices,$cuda_visible_devices"
-  echo "checkpoint_base,$CHECKPOINT_BASE"
-  echo "best_checkpoint,$BEST_CHECKPOINT"
-  echo "result_dir,$RESULT_DIR"
-  echo "train_log,$LOG_DIR/gpt2_rain_${RUN_TS}_train.log"
-  echo "eval_log,$LOG_DIR/gpt2_rain_${RUN_TS}_eval.log"
-} > "$RESULT_DIR/run_manifest.csv"
+  echo "checkpoint_base,$checkpoint_base"
+  echo "best_checkpoint,$best_checkpoint"
+  echo "result_dir,$result_dir"
+  echo "train_log,$log_dir/gpt2_rain_${run_ts}_train.log"
+  echo "eval_log,$log_dir/gpt2_rain_${run_ts}_eval.log"
+} > "$result_dir/run_manifest.csv"
