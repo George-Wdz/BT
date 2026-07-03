@@ -58,9 +58,16 @@ python_cmd=(
   --batch-size 64                                                                                # 训练 batch size
   --patience 15                                                                                  # early stopping 容忍 epoch 数
   --lr 0.0001                                                                                    # 初始学习率
+  --dry-baseline-method mean                                                                      # dry baseline 方法：mean=同卫星均值；geo_weighted=同卫星几何加权 top-k 与均值混合
   --dry-baseline-image-rain-prob-threshold 0.2                                                    # dry baseline 候选中排除视觉雨天的概率阈值
   --dry-baseline-require-image-available 0                                                        # 0=无图像也可参与 dry baseline；1=只用有相机标签的 pass
   --dry-baseline-min-sunny-prob 0.0                                                               # >0 时要求 prob_sunny 不低于该阈值；0=不启用 sunny 阈值
+  --dry-baseline-geo-top-k 5                                                                       # geo_weighted 中参与加权的相近几何 dry pass 数
+  --dry-baseline-geo-min-candidates 2                                                             # 同卫星几何候选少于该值时退回同卫星均值
+  --dry-baseline-geo-blend-alpha 0.5                                                              # final=alpha*几何 baseline+(1-alpha)*同卫星均值
+  --dry-baseline-geo-slant-scale-km 500                                                           # slant range 差异归一化尺度，单位 km
+  --dry-baseline-geo-elevation-scale-deg 10                                                       # elevation 差异归一化尺度，单位 degree
+  --dry-baseline-geo-azimuth-scale-deg 45                                                         # azimuth 差异归一化尺度，单位 degree
   --auxiliary-loss-weight 0.3                                                                    # 辅助目标损失权重
   --eval-batch-size 128                                                                          # 训练后评估 batch size
 )

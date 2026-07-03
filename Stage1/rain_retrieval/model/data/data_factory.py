@@ -165,6 +165,26 @@ def _mean_vector(p: Dict, key: str) -> np.ndarray:
     return np.nan_to_num(mean, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
 
 
+def _geo_vector(p: Dict) -> np.ndarray | None:
+    """Return [slant_range_km, elevation_deg, azimuth_sin, azimuth_cos]."""
+    columns = p.get("feature_columns", {}).get("position", [])
+    required = ["slant_range_km", "elevation_deg", "azimuth_sin", "azimuth_cos"]
+    if not columns or any(name not in columns for name in required):
+        return None
+    pos = _mean_vector(p, "position_features")
+    idx = [columns.index(name) for name in required]
+    if max(idx) >= len(pos):
+        return None
+    return pos[idx].astype(np.float32)
+
+
+def _azimuth_diff_deg(a_sin: float, a_cos: float, b_sin: float, b_cos: float) -> float:
+    a = np.arctan2(a_sin, a_cos)
+    b = np.arctan2(b_sin, b_cos)
+    diff = abs(a - b)
+    return float(np.degrees(min(diff, 2 * np.pi - diff)))
+
+
 def _delta_summary_features(delta: np.ndarray) -> np.ndarray:
     """Repeat pass-level delta statistics at each timestep."""
     with np.errstate(invalid="ignore"):
@@ -303,6 +323,116 @@ def attach_train_dry_baseline(
             f"image_rain_prob_threshold={baseline_cfg.get('image_rain_prob_threshold', 0.2)}"
         )
         return apply_mean(train_passes), apply_mean(val_passes), apply_mean(test_passes)
+
+    if method == "geo_weighted":
+        candidates = []
+        skipped_no_geo = 0
+        by_sat_parts: dict[int, list[np.ndarray]] = {}
+        global_parts = []
+        for p in dry_train:
+            link = np.asarray(p["link_features"], dtype=np.float32)
+            by_sat_parts.setdefault(int(p["satellite_id"]), []).append(link)
+            global_parts.append(link)
+            geo = _geo_vector(p)
+            if geo is None:
+                skipped_no_geo += 1
+                continue
+            candidates.append({
+                "pass": p,
+                "satellite_id": int(p["satellite_id"]),
+                "link_mean": _mean_vector(p, "link_features"),
+                "geo": geo,
+            })
+
+        if not candidates:
+            raise ValueError(
+                "dry_baseline.method=geo_weighted requires position features containing "
+                "slant_range_km, elevation_deg, azimuth_sin, and azimuth_cos"
+            )
+
+        global_baseline = np.concatenate(global_parts, axis=0).mean(axis=0)
+        sat_baseline = {
+            sat_id: np.concatenate(parts, axis=0).mean(axis=0)
+            for sat_id, parts in by_sat_parts.items()
+        }
+
+        by_sat_candidates: dict[int, list[dict]] = {}
+        for c in candidates:
+            by_sat_candidates.setdefault(c["satellite_id"], []).append(c)
+
+        top_k = max(int(baseline_cfg.get("geo_top_k", 5)), 1)
+        min_candidates = max(int(baseline_cfg.get("geo_min_candidates", 2)), 1)
+        slant_scale = max(float(baseline_cfg.get("geo_slant_scale_km", 500.0)), 1e-6)
+        elev_scale = max(float(baseline_cfg.get("geo_elevation_scale_deg", 10.0)), 1e-6)
+        az_scale = max(float(baseline_cfg.get("geo_azimuth_scale_deg", 45.0)), 1e-6)
+        blend_alpha = float(baseline_cfg.get("geo_blend_alpha", 0.5))
+        blend_alpha = min(max(blend_alpha, 0.0), 1.0)
+
+        stats = {"geo": 0, "sat_mean": 0, "global": 0}
+
+        def geo_score(target_geo: np.ndarray, cand_geo: np.ndarray) -> float:
+            slant = abs(float(target_geo[0] - cand_geo[0])) / slant_scale
+            elev = abs(float(target_geo[1] - cand_geo[1])) / elev_scale
+            az = _azimuth_diff_deg(
+                float(target_geo[2]), float(target_geo[3]),
+                float(cand_geo[2]), float(cand_geo[3]),
+            ) / az_scale
+            return slant * slant + elev * elev + az * az
+
+        def select_geo_weighted(p: Dict) -> np.ndarray:
+            sat_id = int(p["satellite_id"])
+            sat_mean = sat_baseline.get(sat_id)
+            if sat_mean is None:
+                stats["global"] += 1
+                return global_baseline
+
+            target_geo = _geo_vector(p)
+            pool = by_sat_candidates.get(sat_id, [])
+            if target_geo is None or not pool:
+                stats["sat_mean"] += 1
+                return sat_mean
+
+            if len(pool) > 1:
+                filtered = [c for c in pool if c["pass"] is not p]
+                if filtered:
+                    pool = filtered
+
+            scored = [(geo_score(target_geo, c["geo"]), c) for c in pool]
+            scored.sort(key=lambda item: item[0])
+            selected = scored[:top_k]
+            if len(selected) < min_candidates:
+                stats["sat_mean"] += 1
+                return sat_mean
+
+            scores = np.asarray([s for s, _ in selected], dtype=np.float32)
+            weights = np.exp(-0.5 * scores)
+            if float(weights.sum()) <= 1e-12:
+                weights = np.ones_like(weights)
+            weights = weights / weights.sum()
+            matched = np.sum(
+                np.stack([c["link_mean"] for _, c in selected], axis=0) * weights[:, None],
+                axis=0,
+            )
+            stats["geo"] += 1
+            return (blend_alpha * matched + (1.0 - blend_alpha) * sat_mean).astype(np.float32)
+
+        def apply_geo(split: List[Dict]) -> List[Dict]:
+            return [add_features(p, select_geo_weighted(p)) for p in split]
+
+        out = apply_geo(train_passes), apply_geo(val_passes), apply_geo(test_passes)
+        print(
+            f"Attached train dry baseline deltas: method=geo_weighted, satellites={len(sat_baseline)}, "
+            f"geo_satellites={len(by_sat_candidates)}, link_dim={link_dim}, add_summary={add_summary}, "
+            f"candidates={len(dry_train)}, geo_candidates={len(candidates)}, skipped_no_geo={skipped_no_geo}, "
+            f"top_k={top_k}, min_candidates={min_candidates}, blend_alpha={blend_alpha:g}, "
+            f"slant_scale_km={slant_scale:g}, elevation_scale_deg={elev_scale:g}, "
+            f"azimuth_scale_deg={az_scale:g}, threshold={threshold:g}, "
+            f"require_image_available={baseline_cfg.get('require_image_available', False)}, "
+            f"min_sunny_prob={baseline_cfg.get('min_sunny_prob')}, "
+            f"image_rain_prob_threshold={baseline_cfg.get('image_rain_prob_threshold', 0.2)}, "
+            f"usage_geo={stats['geo']}, usage_sat_mean={stats['sat_mean']}, usage_global={stats['global']}"
+        )
+        return out
 
     if method != "matched":
         raise ValueError(f"Unsupported dry_baseline.method: {method}")

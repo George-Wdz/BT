@@ -449,12 +449,18 @@ def training_overrides(
         f"image_weather.csv_path={image_csv}",
         f"image_weather.tolerance={args.image_tolerance}",
         "dry_baseline.enabled=true",
-        "dry_baseline.method=mean",
+        f"dry_baseline.method={args.dry_baseline_method}",
         "dry_baseline.exclude_instant_rain=true",
         "dry_baseline.exclude_image_rain=true",
         f"dry_baseline.image_rain_prob_threshold={args.dry_baseline_image_rain_prob_threshold}",
         f"dry_baseline.require_image_available={str(args.dry_baseline_require_image_available).lower()}",
         f"dry_baseline.min_sunny_prob={args.dry_baseline_min_sunny_prob}",
+        f"dry_baseline.geo_top_k={args.dry_baseline_geo_top_k}",
+        f"dry_baseline.geo_min_candidates={args.dry_baseline_geo_min_candidates}",
+        f"dry_baseline.geo_blend_alpha={args.dry_baseline_geo_blend_alpha}",
+        f"dry_baseline.geo_slant_scale_km={args.dry_baseline_geo_slant_scale_km}",
+        f"dry_baseline.geo_elevation_scale_deg={args.dry_baseline_geo_elevation_scale_deg}",
+        f"dry_baseline.geo_azimuth_scale_deg={args.dry_baseline_geo_azimuth_scale_deg}",
         *feature_overrides(feature_groups, args.position_mode),
         "model.use_summary_token=true",
         "targets.auxiliary=[rain_rate_mean,rain_rate_max,rainy_ratio]",
@@ -863,6 +869,12 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--patience", type=int, default=env_int("PATIENCE", 15))
     parser.add_argument("--data-num-workers", type=int, default=env_int("DATA_NUM_WORKERS", 0))
     parser.add_argument("--eval-batch-size", type=int, default=env_int("EVAL_BATCH_SIZE", 128))
+    parser.add_argument(
+        "--dry-baseline-method",
+        default=env("DRY_BASELINE_METHOD", "mean"),
+        choices=["mean", "geo_weighted", "matched"],
+        help="Dry baseline method: mean, geo_weighted, or legacy matched.",
+    )
     parser.add_argument("--dry-baseline-image-rain-prob-threshold", type=float, default=env_float("DRY_BASELINE_IMAGE_RAIN_PROB_THRESHOLD", 0.2))
     parser.add_argument(
         "--dry-baseline-require-image-available",
@@ -874,6 +886,12 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         help="0: allow dry baseline candidates without image labels; 1: require matched image labels.",
     )
     parser.add_argument("--dry-baseline-min-sunny-prob", type=float, default=env_float("DRY_BASELINE_MIN_SUNNY_PROB", 0.0))
+    parser.add_argument("--dry-baseline-geo-top-k", type=int, default=env_int("DRY_BASELINE_GEO_TOP_K", 5))
+    parser.add_argument("--dry-baseline-geo-min-candidates", type=int, default=env_int("DRY_BASELINE_GEO_MIN_CANDIDATES", 2))
+    parser.add_argument("--dry-baseline-geo-blend-alpha", type=float, default=env_float("DRY_BASELINE_GEO_BLEND_ALPHA", 0.5))
+    parser.add_argument("--dry-baseline-geo-slant-scale-km", type=float, default=env_float("DRY_BASELINE_GEO_SLANT_SCALE_KM", 500.0))
+    parser.add_argument("--dry-baseline-geo-elevation-scale-deg", type=float, default=env_float("DRY_BASELINE_GEO_ELEVATION_SCALE_DEG", 10.0))
+    parser.add_argument("--dry-baseline-geo-azimuth-scale-deg", type=float, default=env_float("DRY_BASELINE_GEO_AZIMUTH_SCALE_DEG", 45.0))
     parser.add_argument("--auxiliary-loss-weight", type=float, default=env_float("AUXILIARY_LOSS_WEIGHT", 0.3))
     parser.add_argument("--lr", default=env("LR"))
     parser.add_argument("--e-layers", type=int, default=env("E_LAYERS"))

@@ -45,7 +45,7 @@ image_weather:
 dry_baseline:
   enabled: true
   rain_threshold: 1e-6
-  method: "mean"              # mean: 同卫星训练集无雨均值；matched: 同卫星内按过境时间和 position 匹配最近无雨 pass
+  method: "mean"              # mean: 同卫星训练集无雨均值；geo_weighted: 同卫星内按几何相似度加权 top-k 后与均值混合；matched: 旧版最近 pass
   add_summary: false          # true 时附加 dry delta 的 mean/std/min/max/range/slope 统计值
   exclude_instant_rain: true   # 构建 dry baseline 时排除 rain_rate_max>阈值的短时雨 pass
   exclude_image_rain: true     # 构建 dry baseline 时排除视觉模型认为下雨的 pass
@@ -55,6 +55,12 @@ dry_baseline:
   time_scale_hours: 72.0      # matched 中时间距离的归一化尺度
   time_weight: 1.0
   position_weight: 1.0
+  geo_top_k: 5                # geo_weighted 中参与加权的相近几何 dry pass 数
+  geo_min_candidates: 2       # 同卫星几何候选少于该值时退回同卫星均值
+  geo_blend_alpha: 0.5        # final = alpha*几何加权 baseline + (1-alpha)*同卫星均值 baseline
+  geo_slant_scale_km: 500.0
+  geo_elevation_scale_deg: 10.0
+  geo_azimuth_scale_deg: 45.0
 
 targets:
   primary:
