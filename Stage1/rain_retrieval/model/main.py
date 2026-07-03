@@ -74,7 +74,7 @@ def set_seed(seed: int):
 def build_setting(cfg: dict, itr: int) -> str:
     m = cfg["model"]
     t = cfg["training"]
-    chan = "ca" if m.get("use_channel_attention", False) else "cm"
+    chan = str(m.get("fusion_mode") or ("cw" if m.get("use_channel_attention", False) else "cm")).lower()
     return (
         f"stage1_{chan}_dm{m['d_model']}_df{m['d_ff']}_eh{m['n_heads']}"
         f"_el{m['e_layers']}_dl{m['d_layers']}_pl{m['patch_len']}_st{m['stride']}"
@@ -236,6 +236,29 @@ def _coerce_numeric(cfg: dict):
     ):
         if isinstance(b.get(k), str):
             b[k] = float(b[k])
+
+    m = cfg.get("model", {})
+    for k in (
+        "input_dim",
+        "max_seq_len",
+        "patch_len",
+        "stride",
+        "d_model",
+        "n_heads",
+        "e_layers",
+        "d_layers",
+        "d_ff",
+        "num_satellites",
+        "sat_emb_dim",
+        "group_hidden_dim",
+        "group_attention_heads",
+        "group_attention_layers",
+    ):
+        if k in m and isinstance(m[k], str):
+            m[k] = int(m[k])
+    for k in ("dropout", "group_attention_dropout"):
+        if k in m and isinstance(m.get(k), str):
+            m[k] = float(m[k])
 
     t = cfg["training"]
     for k in (

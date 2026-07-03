@@ -9,6 +9,7 @@ import random
 import re
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +53,20 @@ def is_main() -> bool:
 def log(message: str) -> None:
     if is_main():
         print(message)
+
+
+@contextmanager
+def suppress_non_main_stdout():
+    if is_main():
+        yield
+        return
+    old_stdout = sys.stdout
+    with open(os.devnull, "w") as devnull:
+        sys.stdout = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
 
 
 def setup_distributed() -> tuple[torch.device, int]:
@@ -123,11 +138,23 @@ def _coerce_numeric(cfg: dict) -> None:
             b[key] = float(b[key])
 
     m = cfg.get("model", {})
-    for key in ("input_dim", "max_seq_len", "patch_len", "stride", "num_satellites", "sat_emb_dim", "gpt2_layers"):
+    for key in (
+        "input_dim",
+        "max_seq_len",
+        "patch_len",
+        "stride",
+        "num_satellites",
+        "sat_emb_dim",
+        "gpt2_layers",
+        "group_hidden_dim",
+        "group_attention_heads",
+        "group_attention_layers",
+    ):
         if key in m and isinstance(m[key], str):
             m[key] = int(m[key])
-    if isinstance(m.get("dropout"), str):
-        m["dropout"] = float(m["dropout"])
+    for key in ("dropout", "group_attention_dropout"):
+        if isinstance(m.get(key), str):
+            m[key] = float(m[key])
 
     t = cfg["training"]
     for key in (
@@ -189,11 +216,67 @@ def build_setting(cfg: dict, itr: int) -> str:
     m = cfg["model"]
     t = cfg["training"]
     freeze = str(m.get("freeze_gpt2", "all")).replace("/", "_")
+    group = "ga" if bool(m.get("use_group_attention", False)) else "flat"
     return (
-        f"gpt2_l{m.get('gpt2_layers', 'all')}_frz{freeze}"
+        f"gpt2_l{m.get('gpt2_layers', 'all')}_{group}_frz{freeze}"
         f"_pl{m['patch_len']}_st{m['stride']}_bs{t['batch_size']}"
         f"_lr{t['lr']}_itr{itr}"
     )
+
+
+def parameter_summary_lines(model: nn.Module) -> list[str]:
+    def count_params(module: nn.Module) -> tuple[int, int]:
+        total = sum(p.numel() for p in module.parameters())
+        trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
+        return trainable, total
+
+    trainable, total = count_params(model)
+    lines = [
+        f"Model parameters: trainable={trainable:,} total={total:,} trainable%={100 * trainable / max(total, 1):.4f}"
+    ]
+
+    gpt2_trainable, gpt2_total = count_params(model.gpt2)
+    adapter_modules = [
+        ("patch_embed", model.patch_embed),
+        ("summary_embed", model.summary_embed),
+        ("sat_embedding", model.sat_embedding),
+        ("sat_proj", model.sat_proj),
+        ("head_norm", model.head_norm),
+        ("rainfall_head", model.rainfall_head),
+        ("rain_cls_head", model.rain_cls_head),
+        ("aux_head", model.aux_head),
+    ]
+    adapter_trainable = 0
+    adapter_total = 0
+    adapter_parts = []
+    for name, module in adapter_modules:
+        if module is None:
+            continue
+        part_trainable, part_total = count_params(module)
+        adapter_trainable += part_trainable
+        adapter_total += part_total
+        adapter_parts.append(f"{name}={part_trainable:,}/{part_total:,}")
+
+    lines.append(
+        "Parameter split: "
+        f"gpt2_trainable={gpt2_trainable:,}/{gpt2_total:,}, "
+        f"non_gpt2_trainable={adapter_trainable:,}/{adapter_total:,}"
+    )
+    lines.append("Trainable non-GPT2 modules: " + ", ".join(adapter_parts))
+
+    gpt2_trainable_names = [
+        f"{name}={param.numel():,}"
+        for name, param in model.gpt2.named_parameters()
+        if param.requires_grad
+    ]
+    if gpt2_trainable_names:
+        preview = ", ".join(gpt2_trainable_names[:24])
+        if len(gpt2_trainable_names) > 24:
+            preview += f", ... (+{len(gpt2_trainable_names) - 24} tensors)"
+        lines.append("Trainable GPT2 tensors: " + preview)
+    else:
+        lines.append("Trainable GPT2 tensors: none")
+    return lines
 
 
 def train_one_epoch(model, loader, optimizer, cfg, device):
@@ -275,13 +358,14 @@ def run_one_iter(cfg: dict, itr: int, device: torch.device):
         dist.barrier()
     log(f"\n========== itr {itr} | setting: {setting} ==========")
 
-    train_ds, train_loader, sat_mapper, scaler_X, scaler_y, split = data_provider(cfg, flag="train")
-    val_ds, val_loader, _, _, _, _ = data_provider(
-        cfg, flag="val", sat_mapper=sat_mapper, scaler_X=scaler_X, scaler_y=scaler_y, cached_split=split
-    )
-    test_ds, test_loader, _, _, _, _ = data_provider(
-        cfg, flag="test", sat_mapper=sat_mapper, scaler_X=scaler_X, scaler_y=scaler_y, cached_split=split
-    )
+    with suppress_non_main_stdout():
+        train_ds, train_loader, sat_mapper, scaler_X, scaler_y, split = data_provider(cfg, flag="train")
+        val_ds, val_loader, _, _, _, _ = data_provider(
+            cfg, flag="val", sat_mapper=sat_mapper, scaler_X=scaler_X, scaler_y=scaler_y, cached_split=split
+        )
+        test_ds, test_loader, _, _, _, _ = data_provider(
+            cfg, flag="test", sat_mapper=sat_mapper, scaler_X=scaler_X, scaler_y=scaler_y, cached_split=split
+        )
     if len(train_ds) == 0:
         log("Train set is empty, skip this iter.")
         return None
@@ -297,9 +381,8 @@ def run_one_iter(cfg: dict, itr: int, device: torch.device):
     log(f"Satellite mapper: {sat_mapper.num_satellites} slots")
 
     model = GPT2RainRegressor(cfg).to(device)
-    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total = sum(p.numel() for p in model.parameters())
-    log(f"Model parameters: trainable={trainable:,} total={total:,} trainable%={100 * trainable / max(total, 1):.4f}")
+    for line in parameter_summary_lines(model):
+        log(line)
     if is_dist():
         model = DDP(
             model,
@@ -375,7 +458,8 @@ def run_one_iter(cfg: dict, itr: int, device: torch.device):
     else:
         log("No checkpoint found, evaluating last-epoch model.")
 
-    results = test(state_model, test_loader, scaler_y, cfg, device) if len(test_ds) > 0 else {}
+    with suppress_non_main_stdout():
+        results = test(state_model, test_loader, scaler_y, cfg, device) if len(test_ds) > 0 else {}
     if is_main():
         torch.save(
             {

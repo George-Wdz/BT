@@ -116,6 +116,16 @@ def build_train_command(args: argparse.Namespace, checkpoint_base: Path) -> tupl
         "--set",
         f"model.freeze_gpt2={args.freeze_gpt2}",
         "--set",
+        f"model.use_group_attention={str(bool(args.use_group_attention)).lower()}",
+        "--set",
+        f"model.group_hidden_dim={args.group_hidden_dim}",
+        "--set",
+        f"model.group_attention_heads={args.group_attention_heads}",
+        "--set",
+        f"model.group_attention_layers={args.group_attention_layers}",
+        "--set",
+        f"model.group_attention_dropout={args.group_attention_dropout}",
+        "--set",
         f"training.iterations={args.iterations}",
         "--set",
         f"training.batch_size={args.batch_size}",
@@ -125,6 +135,12 @@ def build_train_command(args: argparse.Namespace, checkpoint_base: Path) -> tupl
         f"training.patience={args.patience}",
         "--set",
         f"training.lr={args.lr}",
+        "--set",
+        f"training.weight_decay={args.weight_decay}",
+        "--set",
+        f"training.use_cosine={str(args.use_cosine).lower()}",
+        "--set",
+        f"training.tmax={args.tmax}",
     ]
     for item in args.set:
         cmd.extend(["--set", item])
@@ -166,6 +182,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cuda-visible-devices", default=os.environ.get("CUDA_VISIBLE_DEVICES", "0"))
     parser.add_argument("--eval-cuda-visible-devices", default="0")
     parser.add_argument("--ddp", action="store_true")
+    parser.add_argument("--omp-num-threads", type=int, default=1)
 
     parser.add_argument("--checkpoint-base", default="")
     parser.add_argument("--result-dir", default="")
@@ -181,12 +198,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--feature-group-dims", default=DEFAULT_FEATURE_GROUP_DIMS)
     parser.add_argument("--gpt2-layers", type=int, default=6)
     parser.add_argument("--freeze-gpt2", default="all", choices=["all", "ln_wpe", "none"])
+    parser.add_argument("--use-group-attention", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--group-hidden-dim", type=int, default=128)
+    parser.add_argument("--group-attention-heads", type=int, default=4)
+    parser.add_argument("--group-attention-layers", type=int, default=1)
+    parser.add_argument("--group-attention-dropout", type=float, default=0.1)
 
     parser.add_argument("--iterations", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--patience", type=int, default=15)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--weight-decay", type=float, default=1e-5)
+    parser.add_argument("--use-cosine", type=int, choices=[0, 1], default=1)
+    parser.add_argument("--tmax", type=int, default=20)
     parser.add_argument("--eval-batch-size", type=int, default=128)
     parser.add_argument("--set", action="append", default=[])
     return parser.parse_args()
@@ -204,6 +229,7 @@ def main() -> None:
     train_cmd, nproc = build_train_command(args, checkpoint_base)
     train_env = os.environ.copy()
     train_env["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
+    train_env.setdefault("OMP_NUM_THREADS", str(args.omp_num_threads))
     eval_env = os.environ.copy()
     eval_env["CUDA_VISIBLE_DEVICES"] = args.eval_cuda_visible_devices
 

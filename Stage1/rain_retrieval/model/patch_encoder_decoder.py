@@ -86,6 +86,80 @@ class GroupedPatchEmbedding(nn.Module):
         return out, patch_mask
 
 
+class GroupAttentionPatchEmbedding(nn.Module):
+    """
+    物理分组 attention patching：先按 feature group 编码，再在每个 patch 内做组间 attention。
+
+    输出 (B, N, d_model)，可直接接标准时间维 EncoderLayer。
+    """
+
+    def __init__(
+        self,
+        group_dims: list,
+        patch_len: int,
+        stride: int,
+        d_model: int,
+        group_hidden_dim: int = 128,
+        n_heads: int = 4,
+        n_layers: int = 1,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.group_dims = list(group_dims)
+        self.patch_len = patch_len
+        self.stride = stride
+        self.group_projs = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(g * patch_len, group_hidden_dim),
+                nn.LayerNorm(group_hidden_dim),
+                nn.GELU(),
+            )
+            for g in self.group_dims
+        ])
+        self.group_embed = nn.Parameter(torch.zeros(len(self.group_dims), group_hidden_dim))
+        layer = nn.TransformerEncoderLayer(
+            d_model=group_hidden_dim,
+            nhead=n_heads,
+            dim_feedforward=group_hidden_dim * 4,
+            dropout=dropout,
+            activation="gelu",
+            batch_first=True,
+        )
+        self.group_encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
+        self.out = nn.Sequential(
+            nn.LayerNorm(group_hidden_dim),
+            nn.Linear(group_hidden_dim, d_model),
+            nn.LayerNorm(d_model),
+        )
+        nn.init.normal_(self.group_embed, std=0.02)
+
+    def forward(self, x, mask=None):
+        # x: (B, T, sum(group_dims))
+        B, T, _ = x.shape
+        if mask is not None and mask.dtype != torch.bool:
+            mask = mask.bool()
+        chunks = torch.split(x, self.group_dims, dim=-1)
+        group_tokens = []
+        N = None
+        for chunk, proj in zip(chunks, self.group_projs):
+            x_p = chunk.unfold(1, self.patch_len, self.stride)  # (B, N, g, P)
+            x_p = x_p.permute(0, 1, 3, 2).contiguous()          # (B, N, P, g)
+            N = x_p.shape[1]
+            x_p = x_p.reshape(B * N, -1)
+            group_tokens.append(proj(x_p))
+        groups = torch.stack(group_tokens, dim=1)
+        groups = groups + self.group_embed.unsqueeze(0).to(dtype=groups.dtype)
+        groups = self.group_encoder(groups)
+        out = self.out(groups.mean(dim=1)).reshape(B, N, -1)
+
+        if mask is not None:
+            m_p = mask.unfold(1, self.patch_len, self.stride)
+            patch_mask = m_p.any(dim=-1).bool()
+        else:
+            patch_mask = torch.ones(B, out.size(1), dtype=torch.bool, device=x.device)
+        return out, patch_mask
+
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 512, dropout: float = 0.1):
         super().__init__()
@@ -255,11 +329,12 @@ class PatchEncoderDecoder(nn.Module):
     """
     Pass-based Patch Encoder-Decoder Transformer.
 
-    支持两种 Encoder 模式：
+    支持三种 Encoder 模式：
     - Channel-mixing（默认）：13维特征拼接做patch embedding
     - Two-stage attention（可选）：分组patch embedding + 时间attn + 通道attn
+    - Group attention（可选）：分组patch embedding + 组间attn + 标准时间attn
 
-    通过 cfg.model.use_channel_attention 切换，便于消融对比。
+    通过 cfg.model.fusion_mode 切换，便于消融对比。
     """
 
     def __init__(self, cfg: dict):
@@ -277,7 +352,14 @@ class PatchEncoderDecoder(nn.Module):
         num_satellites = mc["num_satellites"]
         sat_emb_dim = mc.get("sat_emb_dim", 16)
 
-        self.use_channel_attn = mc.get("use_channel_attention", False)
+        legacy_channel = mc.get("use_channel_attention", False)
+        self.fusion_mode = mc.get("fusion_mode")
+        if self.fusion_mode is None:
+            self.fusion_mode = "cw" if legacy_channel else "cm"
+        self.fusion_mode = str(self.fusion_mode).lower()
+        if self.fusion_mode not in {"cm", "cw", "ga"}:
+            raise ValueError(f"unsupported model.fusion_mode={self.fusion_mode}; expected cm/cw/ga")
+        self.use_channel_attn = self.fusion_mode == "cw"
         self.use_summary_token = mc.get("use_summary_token", True)
         self.feature_group_dims = mc.get("feature_group_dims", [6, 6, 3])
         assert sum(self.feature_group_dims) == input_dim, \
@@ -295,7 +377,7 @@ class PatchEncoderDecoder(nn.Module):
         self.sat_proj = nn.Linear(sat_emb_dim, d_model)
 
         # Encoder（根据消融开关选择）
-        if self.use_channel_attn:
+        if self.fusion_mode == "cw":
             self.enc_patch_embed = GroupedPatchEmbedding(
                 self.feature_group_dims, patch_len, stride, d_model
             )
@@ -305,6 +387,21 @@ class PatchEncoderDecoder(nn.Module):
             ])
             # 通道融合：将 (B, N, G, d) 聚合为 (B, N, d) 供 decoder cross-attn 使用
             self.channel_fuse = nn.Linear(len(self.feature_group_dims) * d_model, d_model)
+        elif self.fusion_mode == "ga":
+            self.enc_patch_embed = GroupAttentionPatchEmbedding(
+                self.feature_group_dims,
+                patch_len,
+                stride,
+                d_model,
+                group_hidden_dim=int(mc.get("group_hidden_dim", 128)),
+                n_heads=int(mc.get("group_attention_heads", 4)),
+                n_layers=int(mc.get("group_attention_layers", 1)),
+                dropout=float(mc.get("group_attention_dropout", dropout)),
+            )
+            self.encoder_layers = nn.ModuleList([
+                EncoderLayer(d_model, n_heads, d_ff, dropout) for _ in range(e_layers)
+            ])
+            self.channel_fuse = None
         else:
             self.enc_patch_embed = PatchEmbedding(input_dim, patch_len, stride, d_model)
             self.encoder_layers = nn.ModuleList([
@@ -349,7 +446,7 @@ class PatchEncoderDecoder(nn.Module):
         B = features.size(0)
         sat_emb = self.sat_proj(self.sat_embedding(satellite_idx))  # (B, d)
 
-        if self.use_channel_attn:
+        if self.fusion_mode == "cw":
             # Two-stage 模式
             enc_in, patch_mask = self.enc_patch_embed(features, mask)  # (B, N, G, d)
             # 加 satellite embedding（广播到所有 patch 和 group）
@@ -369,7 +466,7 @@ class PatchEncoderDecoder(nn.Module):
             enc_out = self.channel_fuse(enc_out)
             enc_out = self.enc_norm(enc_out)
         else:
-            # Channel-mixing 模式
+            # Channel-mixing / group-attention 模式
             enc_in, patch_mask = self.enc_patch_embed(features, mask)  # (B, N, d)
             enc_in = enc_in + sat_emb.unsqueeze(1)
             enc_in = self.enc_pos(enc_in)

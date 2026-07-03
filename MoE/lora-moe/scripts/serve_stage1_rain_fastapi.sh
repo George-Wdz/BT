@@ -11,9 +11,8 @@ export TOKENIZERS_PARALLELISM=false
 cd /home/wdz/BT/MoE/lora-moe
 
 python_cmd=(
-  env
-  CUDA_VISIBLE_DEVICES=0,1,2,3                                                             # 服务使用的 GPU 编号；如需沿用当前环境，删除本行
   python -m lora_moe.serve.stage1_rain_fastapi
+  --cuda-visible-devices 0,1,2,3                                                           # 服务使用的 GPU 编号；多卡可写 0,1,2,3
   --model-dir /home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct                                 # Qwen2.5-14B-Instruct 基座路径
   --output-dir /home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_a2b2_v2                  # Stage1 LoRA 输出目录
   --stage1-checkpoint-dir /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints/pass_dataset_rain_retrieval_20260612_1116/stage1_cm_dm256_df512_eh8_el3_dl2_pl8_st4_bs32_lr0.0001_itr0 # Stage1 checkpoint 目录
@@ -31,7 +30,7 @@ python_cmd=(
   --max-passes 8                                                                            # 每次最多保留最近 pass 数
   --pass-gap-threshold-s 60                                                                 # 分割 pass 的时间间隔阈值
   --min-pass-points 10                                                                      # 有效 pass 的最少采样点数
-  --no-rain-threshold 0.06                                                                  # 展示口径中小于该值按无雨处理
+  --no-rain-threshold 0.05                                                                  # 展示口径中小于该值按无雨处理
   --use-best                                                                                # 加载 best adapter/projector
 )
 

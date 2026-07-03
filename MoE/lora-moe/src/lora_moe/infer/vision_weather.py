@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -29,6 +30,7 @@ DEFAULT_VISION_WEIGHTS = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run vision-weather LoRA inference.")
     parser.add_argument("--model-dir", default="/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct")
+    parser.add_argument("--cuda-visible-devices", default="")
     parser.add_argument("--adapter-dir", default="")
     parser.add_argument("--projector-path", default="")
     parser.add_argument("--output-dir", default="/home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1")
@@ -172,6 +174,8 @@ def generate_one(
 
 def main() -> None:
     args = parse_args()
+    if args.cuda_visible_devices:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     adapter_dir, projector_path = resolve_artifacts(args)
     torch_dtype = dtype_from_name(args.dtype)
 

@@ -88,6 +88,8 @@ VARIANT_GROUPS = {
     "no_ground": "link,position,image_weather,dry_delta",
 }
 
+FUSION_MODES = {"cm", "cw", "ga"}
+
 
 def env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
@@ -154,6 +156,16 @@ def feature_overrides(groups: str, position_mode: str = "raw6") -> list[str]:
     ]
 
 
+def resolve_fusion_mode(args: argparse.Namespace) -> str:
+    mode = getattr(args, "fusion_mode", None) or env("FUSION_MODE")
+    if mode in (None, ""):
+        mode = "cw" if getattr(args, "use_channel_attention", False) else "cm"
+    mode = str(mode).strip().lower()
+    if mode not in FUSION_MODES:
+        raise ValueError(f"unknown fusion mode: {mode}; available={sorted(FUSION_MODES)}")
+    return mode
+
+
 def latest_npz(dataset_dir: Path, exclude: Path | None = None) -> Path | None:
     candidates = []
     for path in dataset_dir.glob("pass_dataset_*.npz"):
@@ -217,8 +229,11 @@ def write_manifest(path: Path, rows: dict[str, str]) -> None:
 
 
 class Logger:
-    def __init__(self, workflow_log: Path):
+    def __init__(self, workflow_log: Path, cuda_visible_devices: str | None = None):
         self.workflow_log = workflow_log
+        self.env = os.environ.copy()
+        if cuda_visible_devices not in (None, ""):
+            self.env["CUDA_VISIBLE_DEVICES"] = str(cuda_visible_devices)
         self.workflow_log.parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, message: str) -> None:
@@ -234,6 +249,7 @@ class Logger:
         proc = subprocess.Popen(
             cmd,
             cwd=str(cwd),
+            env=self.env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -410,13 +426,19 @@ def training_overrides(
     checkpoints: Path,
     image_csv: Path,
     feature_groups: str,
-    use_channel_attention: bool,
+    fusion_mode: str,
 ) -> list[str]:
+    use_channel_attention = fusion_mode == "cw"
     overrides = [
         f"data.pass_dataset_path={pass_dataset_path}",
         f"checkpoints={checkpoints}",
         f"data.val_strategy={args.val_strategy}",
+        f"model.fusion_mode={fusion_mode}",
         f"model.use_channel_attention={str(use_channel_attention).lower()}",
+        f"model.group_hidden_dim={args.group_hidden_dim}",
+        f"model.group_attention_heads={args.group_attention_heads}",
+        f"model.group_attention_layers={args.group_attention_layers}",
+        f"model.group_attention_dropout={args.group_attention_dropout}",
         f"training.iterations={args.iterations}",
         f"training.batch_size={args.batch_size}",
         f"training.epochs={args.epochs}",
@@ -464,7 +486,7 @@ def train_variant(
     checkpoints: Path,
     image_csv: Path,
     feature_groups: str,
-    use_channel_attention: bool,
+    fusion_mode: str,
     train_log: Path,
 ) -> Path:
     checkpoints.mkdir(parents=True, exist_ok=True)
@@ -475,7 +497,7 @@ def train_variant(
         checkpoints=checkpoints,
         image_csv=image_csv,
         feature_groups=feature_groups,
-        use_channel_attention=use_channel_attention,
+        fusion_mode=fusion_mode,
     )
     cmd = [args.python, "main.py", "--config", args.config]
     for item in overrides:
@@ -543,13 +565,15 @@ def run_rain(args: argparse.Namespace) -> None:
     paths = make_paths(args, "rain_retrieval")
     for path in (paths.label_dir, paths.dataset_dir, paths.checkpoints, paths.result_dir, paths.log_dir):
         path.mkdir(parents=True, exist_ok=True)
-    logger = Logger(paths.workflow_log)
+    logger = Logger(paths.workflow_log, args.cuda_visible_devices)
     logger.log("Stage1 workflow started")
     logger.log(f"dataset_name={paths.dataset_name}")
     logger.log(f"run_ts={paths.run_ts}")
     logger.log(f"dataset_npz={paths.pass_dataset_path}")
     logger.log(f"checkpoints={paths.checkpoints}")
     logger.log(f"results={paths.result_dir}")
+    fusion_mode = resolve_fusion_mode(args)
+    logger.log(f"fusion_mode={fusion_mode}")
 
     if args.image_label_csv:
         image_csv = Path(args.image_label_csv).expanduser()
@@ -565,7 +589,7 @@ def run_rain(args: argparse.Namespace) -> None:
         checkpoints=paths.checkpoints,
         image_csv=image_csv,
         feature_groups=args.feature_groups,
-        use_channel_attention=args.use_channel_attention,
+        fusion_mode=fusion_mode,
         train_log=paths.train_log,
     )
     pred_csv, test_csv, metrics_csv = evaluate_checkpoint(
@@ -582,6 +606,7 @@ def run_rain(args: argparse.Namespace) -> None:
             "run_ts": paths.run_ts,
             "label_csv": str(image_csv),
             "dataset_npz": str(pass_dataset_path),
+            "fusion_mode": fusion_mode,
             "checkpoint_dir": str(ckpt_dir),
             "prediction_csv": str(pred_csv),
             "test_prediction_csv": str(test_csv),
@@ -599,17 +624,19 @@ def run_feature_ablation(args: argparse.Namespace) -> None:
     paths = make_paths(args, "feature_ablation")
     paths.result_dir.mkdir(parents=True, exist_ok=True)
     paths.log_dir.mkdir(parents=True, exist_ok=True)
-    logger = Logger(paths.workflow_log)
+    logger = Logger(paths.workflow_log, args.cuda_visible_devices)
     pass_dataset_path = paths.pass_dataset_path if paths.pass_dataset_path.exists() else latest_npz(paths.dataset_dir)
     if pass_dataset_path is None or not pass_dataset_path.exists():
         raise FileNotFoundError(f"no pass_dataset_*.npz found under {paths.dataset_dir}")
     image_csv = Path(args.image_label_csv or env("IMAGE_LABEL_CSV", str(paths.label_dir / "latest_weather_labels_slim.csv"))).expanduser()
     variants = [v for v in args.variants.split(",") if v]
+    fusion_mode = resolve_fusion_mode(args)
 
     logger.log("Stage1 feature ablation workflow started")
     logger.log(f"dataset_name={paths.dataset_name}")
     logger.log(f"dataset_npz={pass_dataset_path}")
     logger.log(f"variants={','.join(variants)}")
+    logger.log(f"fusion_mode={fusion_mode}")
 
     for variant in variants:
         groups = VARIANT_GROUPS.get(variant)
@@ -626,7 +653,7 @@ def run_feature_ablation(args: argparse.Namespace) -> None:
             checkpoints=checkpoints,
             image_csv=image_csv,
             feature_groups=groups,
-            use_channel_attention=False,
+            fusion_mode=fusion_mode,
             train_log=train_log,
         )
         pred_csv, test_csv, metrics_csv = evaluate_checkpoint(
@@ -641,6 +668,7 @@ def run_feature_ablation(args: argparse.Namespace) -> None:
             {
                 "variant": variant,
                 "feature_groups": groups,
+                "fusion_mode": fusion_mode,
                 "dataset_name": paths.dataset_name,
                 "dataset_npz": str(pass_dataset_path),
                 "checkpoint_dir": str(ckpt_dir),
@@ -658,6 +686,7 @@ def run_feature_ablation(args: argparse.Namespace) -> None:
             "run_ts": paths.run_ts,
             "dataset_npz": str(pass_dataset_path),
             "variants": ",".join(variants),
+            "fusion_mode": fusion_mode,
             "combined_metrics": str(paths.result_dir / "combined_metrics.csv"),
             "combined_metrics_pivot": str(paths.result_dir / "combined_metrics_pivot.csv"),
             "workflow_log": str(paths.workflow_log),
@@ -671,7 +700,7 @@ def run_compare_channels(args: argparse.Namespace) -> None:
     paths = make_paths(args, "rain_retrieval_compare_channels")
     for path in (paths.label_dir, paths.dataset_dir, paths.result_dir, paths.log_dir):
         path.mkdir(parents=True, exist_ok=True)
-    logger = Logger(paths.workflow_log)
+    logger = Logger(paths.workflow_log, args.cuda_visible_devices)
     logger.log("Stage1 channel comparison workflow started")
     if args.image_label_csv:
         image_csv = Path(args.image_label_csv).expanduser()
@@ -680,12 +709,15 @@ def run_compare_channels(args: argparse.Namespace) -> None:
     else:
         image_csv = predict_camera_weather(args, paths, logger)
     pass_dataset_path = build_or_reuse_dataset(args, paths, image_csv, logger)
-    variants = [("cm", False), ("cw", True)]
-    for variant, use_ca in variants:
+    variants = [v.strip().lower() for v in args.fusion_variants.split(",") if v.strip()]
+    unknown = [v for v in variants if v not in FUSION_MODES]
+    if unknown:
+        raise ValueError(f"unknown fusion variants: {unknown}; available={sorted(FUSION_MODES)}")
+    for variant in variants:
         result_dir = paths.result_dir / variant
         checkpoints = paths.checkpoint_base / f"{paths.dataset_name}_{variant}"
         train_log = paths.log_dir / f"{paths.dataset_name}_{variant}_train.log"
-        logger.log(f"training_variant={variant} use_channel_attention={use_ca}")
+        logger.log(f"training_variant={variant} fusion_mode={variant}")
         ckpt_dir = train_variant(
             args,
             logger,
@@ -693,7 +725,7 @@ def run_compare_channels(args: argparse.Namespace) -> None:
             checkpoints=checkpoints,
             image_csv=image_csv,
             feature_groups=args.feature_groups,
-            use_channel_attention=use_ca,
+            fusion_mode=variant,
             train_log=train_log,
         )
         pred_csv, test_csv, metrics_csv = evaluate_checkpoint(
@@ -707,7 +739,8 @@ def run_compare_channels(args: argparse.Namespace) -> None:
             result_dir / "run_manifest.csv",
             {
                 "variant": variant,
-                "use_channel_attention": str(use_ca).lower(),
+                "fusion_mode": variant,
+                "use_channel_attention": str(variant == "cw").lower(),
                 "dataset_name": paths.dataset_name,
                 "dataset_npz": str(pass_dataset_path),
                 "checkpoint_dir": str(ckpt_dir),
@@ -717,7 +750,7 @@ def run_compare_channels(args: argparse.Namespace) -> None:
                 "train_log": str(train_log),
             },
         )
-    combine_metrics(paths.result_dir, ["cm", "cw"])
+    combine_metrics(paths.result_dir, variants)
     write_manifest(
         paths.result_dir / "run_manifest.csv",
         {
@@ -725,6 +758,7 @@ def run_compare_channels(args: argparse.Namespace) -> None:
             "run_ts": paths.run_ts,
             "label_csv": str(image_csv),
             "dataset_npz": str(pass_dataset_path),
+            "fusion_variants": ",".join(variants),
             "combined_metrics": str(paths.result_dir / "combined_metrics.csv"),
             "combined_metrics_pivot": str(paths.result_dir / "combined_metrics_pivot.csv"),
             "workflow_log": str(paths.workflow_log),
@@ -736,6 +770,7 @@ def run_compare_channels(args: argparse.Namespace) -> None:
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--python", default=env("PYTHON", "python3"))
+    parser.add_argument("--cuda-visible-devices", default=env("CUDA_VISIBLE_DEVICES", ""))
     parser.add_argument("--config", default=env("CONFIG", "configs/default.yaml"))
     parser.add_argument("--run-ts", default=env("RUN_TS"))
     parser.add_argument("--experiment", default=env("EXPERIMENT"))
@@ -811,6 +846,16 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--fusion-mode",
+        default=env("FUSION_MODE"),
+        choices=sorted(FUSION_MODES),
+        help="Feature fusion mode: cm=channel-mixing, cw=channel-wise/two-stage, ga=group-attention.",
+    )
+    parser.add_argument("--group-hidden-dim", type=int, default=env_int("GROUP_HIDDEN_DIM", 128))
+    parser.add_argument("--group-attention-heads", type=int, default=env_int("GROUP_ATTENTION_HEADS", 4))
+    parser.add_argument("--group-attention-layers", type=int, default=env_int("GROUP_ATTENTION_LAYERS", 1))
+    parser.add_argument("--group-attention-dropout", type=float, default=env_float("GROUP_ATTENTION_DROPOUT", 0.1))
     parser.add_argument("--val-strategy", default=env("VAL_STRATEGY", "stratified_all"))
     parser.add_argument("--iterations", type=int, default=env_int("ITERATIONS", 1))
     parser.add_argument("--epochs", type=int, default=env_int("EPOCHS", 100))
@@ -852,9 +897,10 @@ def build_parser() -> argparse.ArgumentParser:
     ablation.set_defaults(func=run_feature_ablation)
     ablation.add_argument("--variants", default=env("VARIANTS", "full_a,core_e,no_position,no_image,no_ground"))
 
-    compare = sub.add_parser("compare-channels", help="Compare channel-mixing and two-stage attention.")
+    compare = sub.add_parser("compare-channels", help="Compare channel-mixing, channel-wise, and group-attention.")
     add_common_args(compare)
     compare.set_defaults(func=run_compare_channels)
+    compare.add_argument("--fusion-variants", default=env("FUSION_VARIANTS", "cm,cw,ga"))
     return parser
 
 

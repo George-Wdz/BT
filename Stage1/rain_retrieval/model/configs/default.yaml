@@ -78,11 +78,17 @@ model:
   num_satellites: 200    # embedding表大小（索引0=未知卫星，其余给已知ID）
   sat_emb_dim: 16        # satellite embedding 维度
 
-  # Channel Attention 消融开关
-  # false: channel-mixing（默认，前期数据少时使用）
-  # true:  two-stage attention（先时间attn，后通道attn，数据多时启用）
+  # 特征融合消融开关：
+  # cm: channel-mixing，全部特征拼接后投影成 patch token
+  # cw: channel-wise/two-stage，先时间 attention，后特征组 attention
+  # ga: group-attention，按物理特征组生成 group tokens，再组间 attention 融合成 patch token
+  fusion_mode: "cm"
   use_channel_attention: false
   feature_group_dims: [4, 6, 3, 4, 4]  # link / position / ground_weather / image_weather / dry_delta
+  group_hidden_dim: 128
+  group_attention_heads: 4
+  group_attention_layers: 1
+  group_attention_dropout: 0.1
   nonnegative_rainfall: true
   use_summary_token: true
 

@@ -78,6 +78,11 @@ model:
   sat_emb_dim: 16
   use_summary_token: true
   nonnegative_rainfall: true
+  use_group_attention: false
+  group_hidden_dim: 128
+  group_attention_heads: 4
+  group_attention_layers: 1
+  group_attention_dropout: 0.1
 
   gpt2_model_dir: "/home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/gpt2"
   local_files_only: true

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import zlib
 from pathlib import Path
 
@@ -34,6 +35,7 @@ DEFAULT_STAGE1_PASS_DATASET = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train Stage1 rainfall retrieval projector + Qwen LoRA.")
     parser.add_argument("--model-dir", default="/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct")
+    parser.add_argument("--cuda-visible-devices", default="")
     parser.add_argument("--stage1-checkpoint-dir", default=str(DEFAULT_STAGE1_CHECKPOINT_DIR))
     parser.add_argument("--pass-dataset-path", default=str(DEFAULT_STAGE1_PASS_DATASET))
     parser.add_argument("--output-dir", default="/home/wdz/BT/MoE/lora-moe/outputs/stage1_rain_lora_qv_v1")
@@ -58,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora-alpha", type=int, default=16)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--lora-target-modules", default="q_proj,v_proj")
-    parser.add_argument("--no-rain-threshold", type=float, default=0.06)
+    parser.add_argument("--no-rain-threshold", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
@@ -297,6 +299,8 @@ def evaluate_loss(
 
 def main() -> None:
     args = parse_args()
+    if args.cuda_visible_devices:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     torch.manual_seed(args.seed)
 
     output_dir = Path(args.output_dir).expanduser()
@@ -390,6 +394,7 @@ def main() -> None:
     best_val_loss = None
     bad_eval_count = 0
     stop_training = False
+    pending_grad_steps = 0
     optimizer.zero_grad(set_to_none=True)
 
     for epoch in range(args.epochs):
@@ -424,11 +429,13 @@ def main() -> None:
             outputs = model(inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels)
             loss = outputs.loss / args.grad_accum_steps
             loss.backward()
+            pending_grad_steps += 1
             running_loss += float(loss.detach().cpu()) * args.grad_accum_steps
 
-            if step % args.grad_accum_steps == 0:
+            if pending_grad_steps == args.grad_accum_steps:
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
+                pending_grad_steps = 0
                 global_step += 1
                 avg_loss = running_loss / max(1, global_step)
                 progress.set_postfix({"loss": f"{avg_loss:.4f}", "global_step": global_step})
@@ -497,6 +504,23 @@ def main() -> None:
 
         if stop_training or (args.max_steps and global_step >= args.max_steps):
             break
+
+    if pending_grad_steps > 0 and not (args.max_steps and global_step >= args.max_steps):
+        scale = args.grad_accum_steps / pending_grad_steps
+        for group in optimizer.param_groups:
+            for param in group["params"]:
+                if param.grad is not None:
+                    param.grad.mul_(scale)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+        global_step += 1
+        avg_loss = running_loss / max(1, global_step)
+        print(
+            f"[INFO] applied final partial optimizer step: "
+            f"micro_batches={pending_grad_steps}/{args.grad_accum_steps}, "
+            f"global_step={global_step}, loss={avg_loss:.4f}",
+            flush=True,
+        )
 
     print(f"[INFO] saving Stage1 LoRA adapter and projector to {output_dir}", flush=True)
     save_training_artifacts(

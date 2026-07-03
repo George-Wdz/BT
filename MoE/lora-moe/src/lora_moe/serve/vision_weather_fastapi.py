@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import base64
 import io
 import json
@@ -242,7 +243,7 @@ INDEX_HTML = r"""<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LoRA-MoE 视觉天气推理</title>
+  <title>视觉天气推理</title>
   <style>
     :root { --bg:#f6f7f9; --panel:#fff; --text:#1f2933; --muted:#6b7280; --line:#d8dee8; --accent:#0f766e; --accent-strong:#0b5f59; }
     * { box-sizing: border-box; }
@@ -272,7 +273,7 @@ INDEX_HTML = r"""<!doctype html>
   </style>
 </head>
 <body>
-  <h1>LoRA-MoE 视觉天气推理</h1>
+  <h1>视觉天气推理</h1>
   <main>
     <section>
       <div class="field" style="margin-top:0">
@@ -380,7 +381,7 @@ INDEX_HTML = r"""<!doctype html>
 
 
 def create_app(runner: VisionWeatherRunner) -> FastAPI:
-    app = FastAPI(title="LoRA-MoE Vision Weather API", version="0.1.0")
+    app = FastAPI(title="Vision Weather API", version="0.1.0")
 
     @app.get("/", response_class=HTMLResponse)
     def index():
@@ -411,6 +412,7 @@ def create_app(runner: VisionWeatherRunner) -> FastAPI:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", default=DEFAULT_MODEL_DIR)
+    parser.add_argument("--cuda-visible-devices", default="")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--adapter-dir", default="")
     parser.add_argument("--projector-path", default="")
@@ -427,6 +429,8 @@ def main() -> None:
     import uvicorn
 
     args = parse_args()
+    if args.cuda_visible_devices:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     runner = VisionWeatherRunner(
         model_dir=args.model_dir,
         output_dir=args.output_dir,
@@ -438,7 +442,7 @@ def main() -> None:
         dtype=args.dtype,
     )
     app = create_app(runner)
-    print(f"Serving LoRA-MoE vision-weather FastAPI on http://{args.host}:{args.port}", flush=True)
+    print(f"Serving vision-weather FastAPI on http://{args.host}:{args.port}", flush=True)
     uvicorn.run(app, host=args.host, port=args.port)
 
 

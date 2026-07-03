@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sqlite3
 import sys
@@ -35,7 +36,6 @@ if str(STAGE1_MODEL_ROOT) not in sys.path:
 
 from data.data_factory import (  # noqa: E402
     _delta_summary_features,
-    _image_rain_probability,
     _is_dry_baseline_candidate,
     _mean_vector,
     _optional_feature_keys,
@@ -995,6 +995,7 @@ def create_app(runner: Stage1RainServiceRunner) -> FastAPI:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", default=DEFAULT_MODEL_DIR)
+    parser.add_argument("--cuda-visible-devices", default="")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--adapter-dir", default="")
     parser.add_argument("--projector-path", default="")
@@ -1022,6 +1023,8 @@ def main() -> None:
     import uvicorn
 
     args = parse_args()
+    if args.cuda_visible_devices:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     runner = Stage1RainServiceRunner(
         model_dir=args.model_dir,
         output_dir=args.output_dir,

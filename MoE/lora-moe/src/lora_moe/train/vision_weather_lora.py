@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import torch
@@ -17,6 +18,7 @@ from lora_moe.datasets import WeatherInstructionDataset, weather_collate
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train vision-weather projector + Qwen LoRA.")
     parser.add_argument("--model-dir", default="/home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct")
+    parser.add_argument("--cuda-visible-devices", default="")
     parser.add_argument("--split-root", default="/home/wdz/BT/Stage1/vision_weather/data/split")
     parser.add_argument(
         "--vision-weights",
@@ -233,6 +235,8 @@ def evaluate_loss(
 
 def main() -> None:
     args = parse_args()
+    if args.cuda_visible_devices:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     torch.manual_seed(args.seed)
 
     output_dir = Path(args.output_dir).expanduser()
@@ -330,6 +334,7 @@ def main() -> None:
     best_val_loss = None
     bad_eval_count = 0
     stop_training = False
+    pending_grad_steps = 0
     optimizer.zero_grad(set_to_none=True)
 
     for epoch in range(args.epochs):
@@ -353,11 +358,13 @@ def main() -> None:
             outputs = model(inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels)
             loss = outputs.loss / args.grad_accum_steps
             loss.backward()
+            pending_grad_steps += 1
             running_loss += float(loss.detach().cpu()) * args.grad_accum_steps
 
-            if step % args.grad_accum_steps == 0:
+            if pending_grad_steps == args.grad_accum_steps:
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
+                pending_grad_steps = 0
                 global_step += 1
                 avg_loss = running_loss / max(1, global_step)
                 progress.set_postfix({"loss": f"{avg_loss:.4f}", "global_step": global_step})
@@ -426,6 +433,23 @@ def main() -> None:
 
         if stop_training or (args.max_steps and global_step >= args.max_steps):
             break
+
+    if pending_grad_steps > 0 and not (args.max_steps and global_step >= args.max_steps):
+        scale = args.grad_accum_steps / pending_grad_steps
+        for group in optimizer.param_groups:
+            for param in group["params"]:
+                if param.grad is not None:
+                    param.grad.mul_(scale)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+        global_step += 1
+        avg_loss = running_loss / max(1, global_step)
+        print(
+            f"[INFO] applied final partial optimizer step: "
+            f"micro_batches={pending_grad_steps}/{args.grad_accum_steps}, "
+            f"global_step={global_step}, loss={avg_loss:.4f}",
+            flush=True,
+        )
 
     print(f"[INFO] saving LoRA adapter and projector to {output_dir}", flush=True)
     save_training_artifacts(

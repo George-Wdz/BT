@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Compare channel-mixing (cm) and two-stage channel attention (cw) on the same
-# Stage1 rainfall retrieval dataset.
+# Compare channel-mixing (cm), channel-wise/two-stage (cw), and group-attention
+# (ga) on the same Stage1 rainfall retrieval dataset.
 #
-# 默认使用新数据并全量重建 NPZ，保证 cm/cw 两个模型在同一个最新数据集上比较。
+# 默认使用新数据并全量重建 NPZ，保证 cm/cw/ga 三个模型在同一个最新数据集上比较。
 # 如果只想复用已有 NPZ，把 --reuse-dataset 改成 1，并指定 --pass-dataset-path。
 #
 # 常用路径参数：
@@ -29,9 +29,8 @@ cd /home/wdz/BT/Stage1/rain_retrieval/model
 #   time                   完全按 pass 起始时间顺序切分，前 70% train、中间 20% val、最后 10% test。
 
 python_cmd=(
-  env
-  CUDA_VISIBLE_DEVICES=0                                                                        # 训练使用的 GPU 编号；如需沿用当前环境，删除本行
   python3 run_workflow.py compare-channels
+  --cuda-visible-devices 0                                                                       # 训练/评估使用的 GPU；多卡可写 0,1,2,3
   --experiment rain_retrieval_compare_channels                                                   # 实验名称，参与默认 dataset_name 命名
   --db-path /home/wdz/satellite_data/satellite_data.db                                           # 卫星链路和气象数据库路径
   --camera-input-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera                              # 新照片目录；默认会从这里重新生成天气标签
@@ -49,10 +48,15 @@ python_cmd=(
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
-  --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，cm/cw 两个变体共用
-  --position-mode raw6                                                                            # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；新增几何特征需重建 NPZ
+  --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，cm/cw/ga 三个变体共用
+  --position-mode raw6_geo4                                                                       # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；新增几何特征需重建 NPZ
+  --fusion-variants cm,cw,ga                                                                      # 要比较的融合模式：cm=混合投影；cw=通道两阶段；ga=物理组 attention
+  --group-hidden-dim 128                                                                         # ga 模式下每个物理特征组 token 的隐藏维度
+  --group-attention-heads 4                                                                      # ga 模式下组间 self-attention 头数
+  --group-attention-layers 1                                                                     # ga 模式下组间 self-attention 层数；可试 1/2
+  --group-attention-dropout 0.1                                                                  # ga 模式下组间 attention dropout
   --val-strategy stratified_all                                                                  # 数据划分策略，见脚本顶部说明
-  --iterations 1                                                                                 # 每个通道注意力变体的独立训练重复次数
+  --iterations 3                                                                                 # 每个通道注意力变体的独立训练重复次数
   --epochs 100                                                                                   # 每次训练最大 epoch
   --batch-size 64                                                                                # 训练 batch size
   --patience 15                                                                                  # early stopping 容忍 epoch 数

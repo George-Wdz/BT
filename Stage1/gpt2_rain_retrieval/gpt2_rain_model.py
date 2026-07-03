@@ -33,6 +33,83 @@ class PatchEmbedding(nn.Module):
         return embeds, patch_mask
 
 
+class GroupAttentionPatchEmbedding(nn.Module):
+    """Encode each physical feature group before projecting patches to GPT2."""
+
+    def __init__(
+        self,
+        input_dim: int,
+        feature_group_dims: list[int],
+        patch_len: int,
+        stride: int,
+        hidden_size: int,
+        group_hidden_dim: int,
+        num_heads: int,
+        num_layers: int,
+        dropout: float,
+    ):
+        super().__init__()
+        if sum(feature_group_dims) != input_dim:
+            raise ValueError(
+                f"feature_group_dims sum to {sum(feature_group_dims)}, expected input_dim={input_dim}"
+            )
+        self.patch_len = patch_len
+        self.stride = stride
+        self.feature_group_dims = list(feature_group_dims)
+        self.group_projs = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(dim * patch_len, group_hidden_dim),
+                    nn.LayerNorm(group_hidden_dim),
+                    nn.GELU(),
+                )
+                for dim in self.feature_group_dims
+            ]
+        )
+        self.group_embed = nn.Parameter(torch.zeros(len(self.feature_group_dims), group_hidden_dim))
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=group_hidden_dim,
+            nhead=num_heads,
+            dim_feedforward=group_hidden_dim * 4,
+            dropout=dropout,
+            activation="gelu",
+            batch_first=True,
+        )
+        self.group_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.out = nn.Sequential(
+            nn.LayerNorm(group_hidden_dim),
+            nn.Linear(group_hidden_dim, hidden_size),
+            nn.LayerNorm(hidden_size),
+        )
+        nn.init.normal_(self.group_embed, std=0.02)
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None):
+        bsz, _, _ = x.shape
+        if mask is not None and mask.dtype != torch.bool:
+            mask = mask.bool()
+        patches = x.unfold(1, self.patch_len, self.stride)  # (B, N, C, P)
+        patches = patches.permute(0, 1, 3, 2).contiguous()  # (B, N, P, C)
+        n_patches = patches.shape[1]
+        patches = patches.reshape(bsz * n_patches, self.patch_len, -1)
+
+        group_tokens = []
+        start = 0
+        for dim, proj in zip(self.feature_group_dims, self.group_projs):
+            group = patches[:, :, start : start + dim].reshape(bsz * n_patches, self.patch_len * dim)
+            group_tokens.append(proj(group))
+            start += dim
+        groups = torch.stack(group_tokens, dim=1)
+        groups = groups + self.group_embed.unsqueeze(0).to(dtype=groups.dtype)
+        groups = self.group_encoder(groups)
+        embeds = self.out(groups.mean(dim=1)).reshape(bsz, n_patches, -1)
+
+        if mask is not None:
+            patch_mask = mask.unfold(1, self.patch_len, self.stride).any(dim=-1).bool()
+        else:
+            patch_mask = torch.ones(bsz, n_patches, dtype=torch.bool, device=x.device)
+        return embeds, patch_mask
+
+
 class SummaryEmbedding(nn.Module):
     """Pass-level statistics token, matching the small Stage1 model."""
 
@@ -96,12 +173,25 @@ class GPT2RainRegressor(nn.Module):
             self.gpt2.h = self.gpt2.h[:gpt2_layers]
         hidden_size = int(self.gpt2.config.n_embd)
 
-        self.patch_embed = PatchEmbedding(
-            input_dim=input_dim,
-            patch_len=int(mc["patch_len"]),
-            stride=int(mc["stride"]),
-            hidden_size=hidden_size,
-        )
+        if bool(mc.get("use_group_attention", False)):
+            self.patch_embed = GroupAttentionPatchEmbedding(
+                input_dim=input_dim,
+                feature_group_dims=list(mc["feature_group_dims"]),
+                patch_len=int(mc["patch_len"]),
+                stride=int(mc["stride"]),
+                hidden_size=hidden_size,
+                group_hidden_dim=int(mc.get("group_hidden_dim", 128)),
+                num_heads=int(mc.get("group_attention_heads", 4)),
+                num_layers=int(mc.get("group_attention_layers", 1)),
+                dropout=float(mc.get("group_attention_dropout", mc.get("dropout", 0.1))),
+            )
+        else:
+            self.patch_embed = PatchEmbedding(
+                input_dim=input_dim,
+                patch_len=int(mc["patch_len"]),
+                stride=int(mc["stride"]),
+                hidden_size=hidden_size,
+            )
         self.use_summary_token = bool(mc.get("use_summary_token", True))
         self.summary_embed = SummaryEmbedding(input_dim, hidden_size) if self.use_summary_token else None
 
@@ -122,8 +212,12 @@ class GPT2RainRegressor(nn.Module):
 
     def _set_gpt2_trainability(self, mode: str) -> None:
         if mode in {"false", "none", "0"}:
-            for param in self.gpt2.parameters():
+            for name, param in self.gpt2.named_parameters():
                 param.requires_grad = True
+                if name.startswith("wte."):
+                    # We feed numerical soft tokens through inputs_embeds, so
+                    # GPT2's text token embedding table is never used.
+                    param.requires_grad = False
             return
         if mode in {"ln_wpe", "layernorm_position"}:
             for name, param in self.gpt2.named_parameters():

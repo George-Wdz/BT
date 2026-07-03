@@ -40,9 +40,8 @@ cd /home/wdz/BT/Stage1/rain_retrieval/model
 #   time                   完全按 pass 起始时间顺序切分，前 70% train、中间 20% val、最后 10% test。
 
 python_cmd=(
-  env
-  CUDA_VISIBLE_DEVICES=4                                                                        # 训练使用的 GPU 编号；如需沿用当前环境，删除本行
   python3 run_workflow.py rain
+  --cuda-visible-devices 4                                                                       # 训练/评估使用的 GPU；多卡可写 0,1,2,3
   --experiment rain_retrieval                                                                    # 实验名称，参与默认 dataset_name 命名
   --db-path /home/wdz/satellite_data/satellite_data.db                                           # 卫星链路和气象数据库路径
   --camera-input-dir /home/wdz/BT/Stage1/rain_retrieval/data/camera                              # 新照片目录；默认会从这里重新生成天气标签
@@ -63,7 +62,11 @@ python_cmd=(
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
   --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，决定 input_dim 和 feature_group_dims
   --position-mode raw6_geo4                                                                            # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；新增几何特征需重建 NPZ
-  --channel-wise 0                                                                               # 通道建模开关：0=channel-mixing；1=two-stage/channel-wise attention
+  --fusion-mode cm                                                                               # 特征融合模式：cm=channel-mixing；cw=channel-wise/two-stage；ga=group-attention
+  --group-hidden-dim 128                                                                         # ga 模式下每个物理特征组 token 的隐藏维度
+  --group-attention-heads 4                                                                      # ga 模式下组间 self-attention 头数
+  --group-attention-layers 1                                                                     # ga 模式下组间 self-attention 层数；可试 1/2
+  --group-attention-dropout 0.1                                                                  # ga 模式下组间 attention dropout
   --val-strategy stratified_all                                                                  # 数据划分策略，见脚本顶部说明
   --iterations 3                                                                                 # 独立训练重复次数
   --epochs 100                                                                                   # 每次训练最大 epoch

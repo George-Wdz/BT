@@ -51,13 +51,40 @@ bash scripts/run_gpt2_rain_workflow.sh \
 
 - `all`: freeze all GPT2 weights
 - `ln_wpe`: train GPT2 LayerNorm and position embeddings only
-- `none`: train GPT2 as well
+- `none`: train the GPT2 backbone except the unused text token embedding table
+
+Recommended order:
+
+1. `all`: lowest-cost controlled baseline. GPT2 is only used as a frozen
+   sequence backbone.
+2. `ln_wpe`: small adaptation of GPT2 internals. This is a middle ground if
+   the frozen baseline is close to useful.
+3. `none`: GPT2 backbone fine-tuning. Since numeric soft tokens are passed
+   through `inputs_embeds`, the GPT2 text token embedding table is not used
+   and remains frozen. This is the most expensive and easiest to overfit on
+   the current small rainfall dataset.
 
 The default local GPT2 path is:
 
 ```text
 /home/wdz/BT/Stage2/GPT4TS/Long-term_Forecasting/gpt2
 ```
+
+## Optimizer And LR
+
+Training uses `AdamW`.
+
+Default optimizer settings:
+
+- `--lr 0.0001`: initial learning rate
+- `--weight-decay 0.00001`: AdamW weight decay
+- `--use-cosine 1`: enable `CosineAnnealingLR`
+- `--tmax 20`: cosine scheduler `T_max`
+
+With the default cosine scheduler, learning rate is stepped once per epoch and
+decays toward `eta_min=1e-8`. Set `--use-cosine 0` to fall back to the Stage1
+step-style scheduler controlled by `training.lradj` and `training.decay_fac` in
+`configs/default.yaml`.
 
 ## Multi-GPU
 
