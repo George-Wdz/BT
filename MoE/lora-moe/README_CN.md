@@ -44,7 +44,7 @@ satellite pass features
   -> 中文降雨量回答
 ```
 
-Stage1 首版训练目标很窄：让 Qwen 根据反演 token 输出“本次卫星过境降雨量约为 X 毫米”。回答目标使用冻结 Stage1 小模型自己的预测值，而不是雨量计真实标签，这样训练和在线推理保持一致。雨量计分辨率按 `--no-rain-threshold 0.06` 处理，预测值低于该阈值时按无雨/0mm 表达。这不代表 Stage1 小模型本身已经足够准确；后续 Stage1 权重更新后，应重新训练对应 projector 和 A2B2 LoRA。
+Stage1 首版训练目标很窄：让 Qwen 根据反演 token 输出“本次卫星过境降雨量约为 X 毫米”。回答目标使用冻结 Stage1 小模型自己的预测值，而不是雨量计真实标签，这样训练和在线推理保持一致。雨量计分辨率按 `--no-rain-threshold 0.05` 处理，预测值低于该阈值时按无雨/0mm 表达。这不代表 Stage1 小模型本身已经足够准确；后续 Stage1 权重更新后，应重新训练对应 projector 和 A2B2 LoRA。
 
 ## 目录
 
@@ -134,7 +134,7 @@ conda run --no-capture-output -n smoe bash scripts/train_stage1_rain_lora.sh \
 | `--lora-r` / `--lora-alpha` | `8` / `16` |
 | `--lora-dropout` | `0.05` |
 | `--learning-rate` | `2e-4` |
-| `--no-rain-threshold` | `0.06` |
+| `--no-rain-threshold` | `0.05` |
 
 ## 推理
 
@@ -198,7 +198,93 @@ Stage1 A2B2 服务启动时会持久化加载：
 | `--max-passes` | `8` | 每次最多保留最近几个 pass |
 | `--use-best` | 已启用 | 加载 `best/adapter` 和 `best/projector.pt` |
 | `--db-path` | `/home/wdz/satellite_data/satellite_data.db` | 实时卫星数据库 |
-| `--no-rain-threshold` | `0.06` | 低于该阈值的 Stage1 预测展示为无雨/0mm |
+| `--no-rain-threshold` | `0.05` | 低于该阈值的 Stage1 预测展示为无雨/0mm |
+
+### 双普通 Qwen 互相交流 Demo
+
+该 demo 用于验证“服务层多智能体/伪 MoE”的基本机制：两个普通 Qwen 常驻不同 GPU，Gateway 先调用 Qwen-A 生成初稿，再调用 Qwen-B 复核，最后把复核意见交回 Qwen-A 生成最终回答。它不加载 LoRA，不调用视觉或反演专家，只验证“大模型之间通过 API 把输出作为输入继续交互”的可行性。
+
+浏览器界面采用左右双栏布局：左侧展示 Qwen-A 的初稿和终稿，右侧展示 Qwen-B 的复核意见，底部是用户输入框和推理参数。这样可以直观看到 A/B 的交互过程。
+
+界面默认使用流式输出：底层普通 Qwen 服务通过 `/generate/stream` 逐 token 输出，Gateway 通过 `/debate/stream` 按协作模式转发事件，前端边接收边追加到左右对话框中。
+
+当前保留两种协作模式：
+
+- `B复核`：应用模式，流程固定为 `A 初稿 -> B 复核/补充 -> A 终稿`。后续多个专家 B 接入时，优先沿用这个模式。
+- `A/B交互`：技术演示模式，`rounds` 表示 A/B 交互轮数。`rounds=1` 时流程是 `A 初稿 -> B 复核 -> A 终稿`；`rounds=3` 时流程是 `A 初稿 -> B 复核1 -> A 修订1 -> B 复核2 -> A 修订2 -> B 复核3 -> A 终稿`。
+
+Gateway 的职责：
+
+- 对外提供一个统一入口和 Ollama 兼容接口；
+- 保存 Qwen-A/Qwen-B 的角色系统提示词；
+- 控制调用顺序：应用模式为 A 初稿 -> B 复核 -> A 终稿，技术演示模式为 A/B 多轮交互；
+- 维护短期记忆，把同一 `session_id` 最近若干轮问答摘要放回下一轮 prompt；
+- 隔离底层 Qwen 服务，让 Qwen-A/Qwen-B 保持无状态通用文本生成器。
+
+当前短期记忆保存在 Gateway 进程内，服务重启后会丢失。它只用于演示和调试；如果后续要稳定给前端长期使用，应改成 SQLite、Redis 或向量库持久化。
+
+启动：
+
+```bash
+cd /home/wdz/BT/MoE/lora-moe
+conda run --no-capture-output -n smoe bash scripts/serve_dual_qwen_demo.sh
+```
+
+默认资源和端口：
+
+```text
+Qwen-A:  GPU 0,1  http://127.0.0.1:8131
+Qwen-B:  GPU 2,3  http://127.0.0.1:8132
+Gateway:          http://0.0.0.0:8030
+```
+
+普通 FastAPI 调用：
+
+```bash
+curl -X POST http://127.0.0.1:8030/debate \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"服务层多智能体和模型内部 MoE 有什么区别？","mode":"review_then_final","max_new_tokens":256,"temperature":0.0,"rounds":1}'
+```
+
+流式 FastAPI 调用：
+
+```bash
+curl -N -X POST http://127.0.0.1:8030/debate/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"服务层多智能体和模型内部 MoE 有什么区别？","mode":"interactive","max_new_tokens":256,"temperature":0.0,"rounds":3}'
+```
+
+Ollama 兼容调用：
+
+```bash
+curl http://127.0.0.1:8030/api/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"dual-qwen-demo","prompt":"服务层多智能体和模型内部 MoE 有什么区别？","stream":false}'
+```
+
+如果前端只支持 Ollama 服务地址，把前端的 Ollama base URL 指到：
+
+```text
+http://服务器IP:8030
+```
+
+模型名使用：
+
+```text
+dual-qwen-demo
+```
+
+请求中可传入：
+
+```json
+{
+  "session_id": "default",
+  "use_memory": true,
+  "reset_memory": false
+}
+```
+
+`session_id` 用来区分不同会话；`reset_memory=true` 会在本轮调用前清空该会话短期记忆。
 
 ## 产物管理
 

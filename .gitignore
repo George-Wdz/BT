@@ -8,6 +8,8 @@
 __pycache__/
 *.py[cod]
 *.swp
+*.bak
+docs/.write_test
 
 # Environment and secrets
 .env
@@ -39,6 +41,7 @@ Stage2/GPT4TS/Long-term_Forecasting/datasets/
 *.png
 *.webp
 *.bmp
+*.pdf
 
 # Model weights, checkpoints, and adapters
 *.pt
@@ -61,6 +64,7 @@ Stage1/rain_retrieval/model/logs/
 MoE/lora-moe/logs/
 Stage1/rain_retrieval/analysis/**/runs/
 Stage1/rain_retrieval/analysis/**/legacy_*/
+Stage1/rain_retrieval/analysis/db_backfill/
 Stage1/rain_retrieval/paper/
 Stage1/rain_retrieval/paper/figures/
 wandb/
