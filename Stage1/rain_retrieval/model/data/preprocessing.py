@@ -208,9 +208,17 @@ def segment_passes(phy: pd.DataFrame, pos: pd.DataFrame,
     link_cols = link_cols or LINK_COLS
     pos_cols = pos_cols or POS_COLS
     passes = []
+    pos_by_sat = {
+        int(sat_id): sat_pos.sort_index()
+        for sat_id, sat_pos in pos.groupby("satId")
+        if pd.notna(sat_id)
+    }
     for sat_id, sat_phy in phy.groupby("satelliteId"):
         sat_phy = sat_phy.sort_index()
         if len(sat_phy) < min_points:
+            continue
+        sat_pos = pos_by_sat.get(int(sat_id))
+        if sat_pos is None or len(sat_pos) < min_points:
             continue
 
         times = sat_phy.index.to_series()
@@ -223,9 +231,10 @@ def segment_passes(phy: pd.DataFrame, pos: pd.DataFrame,
             if len(seg) < min_points:
                 continue
             t_start, t_end = seg.index[0], seg.index[-1]
-            # 匹配位置数据（最近邻）
-            seg_pos = pos.reindex(seg.index, method="nearest",
-                                  tolerance=pd.Timedelta("5s"))
+            # Match position only within the same satellite ID. A nearest
+            # timestamp from another satellite would corrupt link geometry.
+            seg_pos = sat_pos.reindex(seg.index, method="nearest",
+                                      tolerance=pd.Timedelta("5s"))
             valid = seg_pos[pos_cols].notna().all(axis=1)
             if valid.sum() < min_points:
                 continue
@@ -469,7 +478,8 @@ def build_pass_dataset(db_path: str, output_path: str = None,
     if any(c in pos_cols for c in POSITION_GEO_COLS):
         print("Computing position geometry features...")
         pos = add_position_geometry(pos)
-    pos = pos[pos_cols].sort_index()
+    # Keep satId for same-satellite alignment; only pos_cols enter features.
+    pos = pos[["satId", *pos_cols]].sort_index()
 
     print("Loading weather_data from DB...")
     gw = load_ground_weather(db_path, start_time=start_time, end_time=end_time)
