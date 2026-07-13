@@ -51,6 +51,9 @@ python_cmd=(
   --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，cm/cw/ga 三个变体共用
   --position-mode raw6_geo4                                                                       # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；新增几何特征需重建 NPZ
   --fusion-variants cm,cw,ga                                                                      # 要比较的融合模式：cm=混合投影；cw=通道两阶段；ga=物理组 attention
+  --use-modal-encoders 1                                                                         # cw分支使用模态专用轻量编码器
+  --use-conditioning 1                                                                           # 所有变体启用相同条件化，保证比较口径一致
+  --use-quality-gating 1                                                                         # cw分支启用模态质量门控
   --group-hidden-dim 128                                                                         # ga 模式下每个物理特征组 token 的隐藏维度
   --group-attention-heads 4                                                                      # ga 模式下组间 self-attention 头数
   --group-attention-layers 1                                                                     # ga 模式下组间 self-attention 层数；可试 1/2
@@ -61,8 +64,8 @@ python_cmd=(
   --batch-size 64                                                                                # 训练 batch size
   --patience 15                                                                                  # early stopping 容忍 epoch 数
   --lr 0.0001                                                                                    # 初始学习率
-  --image-tolerance 10min                                                                        # 相机天气标签和卫星过境的时间匹配窗口
-  --dry-baseline-method mean                                                                      # dry baseline 方法：mean=同卫星均值；geo_weighted=同卫星几何加权 top-k 与均值混合
+  --image-tolerance 6min                                                                        # 相机天气标签和卫星过境的时间匹配窗口
+  --dry-baseline-method geo_weighted                                                              # 融合结构对比统一使用几何加权无雨参考
   --dry-baseline-image-rain-prob-threshold 0.2                                                    # dry baseline 候选中排除视觉雨天的概率阈值
   --dry-baseline-require-image-available 0                                                        # 0=无图像也可参与 dry baseline；1=只用有相机标签的 pass
   --dry-baseline-min-sunny-prob 0.0                                                               # >0 时要求 prob_sunny 不低于该阈值；0=不启用 sunny 阈值
@@ -73,6 +76,9 @@ python_cmd=(
   --dry-baseline-geo-elevation-scale-deg 10                                                       # elevation 差异归一化尺度，单位 degree
   --dry-baseline-geo-azimuth-scale-deg 45                                                         # azimuth 差异归一化尺度，单位 degree
   --auxiliary-loss-weight 0.3                                                                    # 辅助目标损失权重
+  --adaptive-task-weighting 1                                                                    # 所有变体使用相同的有界多任务权重
+  --task-log-var-bound 1.5                                                                       # 自适应任务log方差绝对边界
+  --task-weight-regularization 0.01                                                              # 防止小数据下任务权重漂移
   --eval-batch-size 128                                                                          # 训练后评估 batch size
 )
 

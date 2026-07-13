@@ -61,8 +61,8 @@ python_cmd=(
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
   --feature-groups link,position,ground_weather,image_weather,dry_delta                           # 输入特征组，决定 input_dim 和 feature_group_dims
-  --position-mode raw6_geo4                                                                            # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；新增几何特征需重建 NPZ
-  --fusion-mode cm                                                                               # 特征融合模式：cm=channel-mixing；cw=channel-wise/two-stage；ga=group-attention
+  --position-mode geo4                                                                           # 仅使用斜距、仰角和方位角sin/cos，减少位置冗余
+  --fusion-mode cw                                                                               # 单路径多模态时间/通道两阶段融合
   --group-hidden-dim 128                                                                         # ga 模式下每个物理特征组 token 的隐藏维度
   --group-attention-heads 4                                                                      # ga 模式下组间 self-attention 头数
   --group-attention-layers 1                                                                     # ga 模式下组间 self-attention 层数；可试 1/2
@@ -73,8 +73,8 @@ python_cmd=(
   --batch-size 64                                                                                # 训练 batch size
   --patience 15                                                                                  # early stopping 容忍 epoch 数
   --lr 0.0001                                                                                    # 初始学习率
-  --image-tolerance 10min                                                                        # 相机天气标签和卫星过境的时间匹配窗口
-  --dry-baseline-method mean                                                                      # dry baseline 方法：mean=同卫星均值；geo_weighted=同卫星几何加权 top-k 与均值混合
+  --image-tolerance 6min                                                                        # 相机天气标签和卫星过境的时间匹配窗口
+  --dry-baseline-method geo_weighted                                                              # 默认几何加权同卫星无雨参考
   --dry-baseline-image-rain-prob-threshold 0.2                                                    # dry baseline 候选中排除视觉雨天的概率阈值
   --dry-baseline-require-image-available 0                                                        # 0=无图像也可参与 dry baseline；1=只用有相机标签的 pass
   --dry-baseline-min-sunny-prob 0.0                                                               # >0 时要求 prob_sunny 不低于该阈值；0=不启用 sunny 阈值
@@ -85,6 +85,9 @@ python_cmd=(
   --dry-baseline-geo-elevation-scale-deg 10                                                       # elevation 差异归一化尺度，单位 degree
   --dry-baseline-geo-azimuth-scale-deg 45                                                         # azimuth 差异归一化尺度，单位 degree
   --auxiliary-loss-weight 0.3                                                                    # 辅助目标损失权重
+  --adaptive-task-weighting 0                                                                    # 小数据默认固定任务权重，减少随机波动
+  --task-log-var-bound 1.5                                                                       # 自适应任务log方差绝对边界
+  --task-weight-regularization 0.01                                                              # 防止小数据下任务权重漂移
   --eval-batch-size 128                                                                          # 训练后评估 batch size
 )
 

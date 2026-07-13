@@ -70,6 +70,8 @@ def _move_batch(batch, device):
         "features": batch["features"].to(device),
         "mask": batch["mask"].to(device).bool(),
         "satellite_idx": batch["satellite_idx"].to(device).long(),
+        "condition": batch["condition"].to(device),
+        "modal_quality": batch["modal_quality"].to(device),
         "labels": batch["labels"].to(device),
         "labels_phys": batch["labels_phys"].to(device),
     }
@@ -83,10 +85,12 @@ def vali(model, vali_loader, loss_fn, cfg, device):
         for batch in vali_loader:
             b = _move_batch(batch, device)
             rain_pred, aux_pred, rain_logit = model(
-                b["features"], b["mask"], b["satellite_idx"]
+                b["features"], b["mask"], b["satellite_idx"],
+                b["condition"], b["modal_quality"]
             )
             loss, _ = loss_fn(
-                rain_pred, aux_pred, rain_logit, b["labels"], b["labels_phys"], cfg
+                rain_pred, aux_pred, rain_logit, b["labels"], b["labels_phys"], cfg,
+                model.task_log_vars,
             )
             total_loss.append(loss.item())
     model.train()
@@ -104,7 +108,8 @@ def test(model, test_loader, scaler_y, cfg, device):
         for batch in test_loader:
             b = _move_batch(batch, device)
             rain_pred, aux_pred, rain_logit = model(
-                b["features"], b["mask"], b["satellite_idx"]
+                b["features"], b["mask"], b["satellite_idx"],
+                b["condition"], b["modal_quality"]
             )
             rains.append(rain_pred.detach().cpu().numpy())            # (B, 1)
             if aux_pred is not None:

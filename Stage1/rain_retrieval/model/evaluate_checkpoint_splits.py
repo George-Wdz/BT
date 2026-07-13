@@ -12,6 +12,7 @@ import pandas as pd
 import torch
 import yaml
 from torch.utils.data import DataLoader
+from sklearn.metrics import average_precision_score, roc_auc_score
 
 
 ROOT = Path(__file__).resolve().parent
@@ -78,21 +79,26 @@ def _load_checkpoint(ckpt_dir: Path, device: torch.device):
     return cfg, model, sat_mapper, meta["scaler_X"], meta["scaler_y"]
 
 
-def _predict(model, dataset: PassDataset, device: torch.device, batch_size: int) -> tuple[np.ndarray, np.ndarray]:
+def _predict(model, dataset: PassDataset, device: torch.device, batch_size: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     preds = []
     trues = []
+    probs = []
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     with torch.no_grad():
         for batch in loader:
             features = batch["features"].to(device)
             mask = batch["mask"].to(device)
             sat_idx = batch["satellite_idx"].to(device).long()
-            rain_pred, _, _ = model(features, mask, sat_idx)
+            condition = batch["condition"].to(device)
+            quality = batch["modal_quality"].to(device)
+            rain_pred, _, rain_logit = model(features, mask, sat_idx, condition, quality)
             preds.append(rain_pred.detach().cpu().numpy().reshape(-1))
+            probs.append(torch.sigmoid(rain_logit).cpu().numpy().reshape(-1))
             trues.append(batch["labels_phys"][:, 0].detach().cpu().numpy().reshape(-1))
     return (
         np.concatenate(preds).astype(np.float64),
         np.concatenate(trues).astype(np.float64),
+        np.concatenate(probs).astype(np.float64),
     )
 
 
@@ -165,10 +171,68 @@ def _metric_rows(split: str, pred: np.ndarray, true: np.ndarray, threshold: floa
     ]
 
 
+def _classification_row(split: str, prob: np.ndarray, true: np.ndarray,
+                        rain_threshold: float, probability_threshold: float) -> dict:
+    actual = true > rain_threshold
+    predicted = prob >= probability_threshold
+    tp = int(np.sum(actual & predicted)); fp = int(np.sum(~actual & predicted))
+    fn = int(np.sum(actual & ~predicted)); tn = int(np.sum(~actual & ~predicted))
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    if actual.any() and (~actual).any():
+        pr_auc = float(average_precision_score(actual, prob))
+        roc_auc = float(roc_auc_score(actual, prob))
+    else:
+        pr_auc = roc_auc = np.nan
+    return {
+        "split": split, "subset": "rain_classification", "n": int(len(true)),
+        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "precision": precision, "recall": recall,
+        "f1": 2 * precision * recall / max(precision + recall, 1e-12),
+        "false_alarm_rate": fp / max(fp + tn, 1),
+        "pr_auc": pr_auc, "roc_auc": roc_auc,
+    }
+
+
+def _slice_rows(split: str, pred: np.ndarray, true: np.ndarray,
+                passes: list, threshold: float) -> list[dict]:
+    rows = []
+    # Rainfall severity bins, with the first boundary tied to the configured dry threshold.
+    edges = [threshold, 0.1, 1.0, 5.0, 20.0, np.inf]
+    labels = ["trace", "light", "moderate", "heavy", "extreme"]
+    for label, lo, hi in zip(labels, edges[:-1], edges[1:]):
+        keep = (true > lo) & (true <= hi)
+        row = _metric_row(split, f"rain_bin:{label}", pred[keep], true[keep])
+        rows.append(row)
+    sat_ids = np.asarray([int(p["satellite_id"]) for p in passes])
+    for sat_id in np.unique(sat_ids):
+        keep = sat_ids == sat_id
+        rows.append(_metric_row(split, f"satellite:{sat_id}", pred[keep], true[keep]))
+    image_available = np.asarray([
+        int(p.get("label_meta", {}).get("image_available", 0) or 0) for p in passes
+    ])
+    for available in (0, 1):
+        keep = image_available == available
+        rows.append(_metric_row(split, f"image_available:{available}", pred[keep], true[keep]))
+    # Geometry slices are emitted only when the NPZ contains derived geometry columns.
+    elevations = np.full(len(passes), np.nan)
+    for i, p in enumerate(passes):
+        cols = p.get("feature_columns", {}).get("position", [])
+        pos = np.asarray(p.get("position_features", []), dtype=np.float64)
+        if "elevation_deg" in cols and pos.ndim == 2:
+            elevations[i] = np.nanmean(pos[:, cols.index("elevation_deg")])
+    for label, lo, hi in (("low", -90, 20), ("mid", 20, 50), ("high", 50, 90.0001)):
+        keep = np.isfinite(elevations) & (elevations >= lo) & (elevations < hi)
+        if keep.any():
+            rows.append(_metric_row(split, f"elevation:{label}", pred[keep], true[keep]))
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint-dir", required=True)
     parser.add_argument("--rain-threshold", type=float, default=1e-6)
+    parser.add_argument("--probability-threshold", type=float, default=0.5)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--out-csv", default="", help="Optional path to save per-pass predictions.")
     parser.add_argument("--rainy-csv", default="", help="Optional path to save rainy per-pass predictions.")
@@ -213,11 +277,15 @@ def main() -> None:
             feature_group_columns=feature_group_columns(cfg),
             target_names=list(cfg["targets"]["primary"]) + list(cfg["targets"].get("auxiliary", [])),
         )
-        pred, true = _predict(model, ds, device, args.batch_size)
+        pred, true, rain_prob = _predict(model, ds, device, args.batch_size)
         _report(name, pred, true, args.rain_threshold)
         metrics_rows.extend(_metric_rows(name, pred, true, args.rain_threshold))
+        metrics_rows.append(_classification_row(
+            name, rain_prob, true, args.rain_threshold, args.probability_threshold
+        ))
+        metrics_rows.extend(_slice_rows(name, pred, true, split, args.rain_threshold))
         if needs_pass_rows:
-            for p, y_pred, y_true in zip(split, pred, true):
+            for p, y_pred, y_true, y_prob in zip(split, pred, true, rain_prob):
                 ts = pd.DatetimeIndex(p["timestamps"])
                 row = {
                     "split": name,
@@ -228,6 +296,7 @@ def main() -> None:
                     "pred_rainfall_mm": float(y_pred),
                     "abs_error_mm": float(abs(y_pred - y_true)),
                     "is_rainy": bool(y_true > args.rain_threshold),
+                    "pred_rain_probability": float(y_prob),
                 }
                 link = np.asarray(p["link_features"], dtype=np.float64)
                 for i, col in enumerate(cfg.get("features", {}).get("link", [])):

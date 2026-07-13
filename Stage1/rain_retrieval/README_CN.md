@@ -72,6 +72,18 @@ Stage1/rain_retrieval/model/patch_encoder_decoder.py
 | channel-mixing | `model.use_channel_attention=false` | 拼接所有特征后做 patch embedding。 |
 | channel-wise | `model.use_channel_attention=true` | 各特征组独立 embedding，再做时间注意力和通道注意力。 |
 
+当前版本默认使用双路径结构：CM 路径负责累计雨量和雨强回归，CW 路径负责
+rain/no-rain 分类。位置固定使用 `geo4`（斜距、仰角、方位角正余弦），并加入：
+
+- 轻量模态专用编码器与质量门控；
+- 卫星、时间和传播几何条件化 LayerNorm；
+- 每个辅助目标独立的 target query 与输出头；
+- 带边界和正则项的自适应多任务不确定性权重。
+
+时间周期、pass 长度和可用的斜距/仰角/方位角均在加载 NPZ 时动态派生，旧数据集
+无需重建；旧 NPZ 没有几何派生列时自动使用零值回退。小数据集可通过
+`training.adaptive_task_weighting=false` 关闭自适应权重。
+
 ## 训练
 
 完整 Stage1 流程：
@@ -134,6 +146,10 @@ train / validation / test = 0.7 / 0.2 / 0.1
 Scaler、卫星 ID 映射和 dry baseline 只使用训练集拟合，避免验证/测试信息泄漏。
 
 ## 输出
+
+`evaluate_checkpoint_splits.py` 除总体及雨/无雨回归指标外，还报告降雨分类的
+precision、recall、F1、PR-AUC、ROC-AUC、误报率，以及雨量等级、卫星、图像可用性
+和（数据具备时）仰角区间切片指标。
 
 以下产物暂不纳入本仓库：
 

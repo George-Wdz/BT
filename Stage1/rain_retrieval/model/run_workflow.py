@@ -86,6 +86,7 @@ VARIANT_GROUPS = {
     "no_position": "link,ground_weather,image_weather,dry_delta",
     "no_image": "link,position,ground_weather,dry_delta",
     "no_ground": "link,position,image_weather,dry_delta",
+    "no_dry_delta": "link,position,ground_weather,image_weather",
 }
 
 FUSION_MODES = {"cm", "cw", "ga"}
@@ -463,8 +464,14 @@ def training_overrides(
         f"dry_baseline.geo_azimuth_scale_deg={args.dry_baseline_geo_azimuth_scale_deg}",
         *feature_overrides(feature_groups, args.position_mode),
         "model.use_summary_token=true",
+        f"model.use_modal_encoders={str(args.use_modal_encoders).lower()}",
+        f"model.use_conditioning={str(args.use_conditioning).lower()}",
+        f"model.use_quality_gating={str(args.use_quality_gating).lower()}",
         "targets.auxiliary=[rain_rate_mean,rain_rate_max,rainy_ratio]",
         f"training.auxiliary_loss_weight={args.auxiliary_loss_weight}",
+        f"training.adaptive_task_weighting={str(args.adaptive_task_weighting).lower()}",
+        f"training.task_log_var_bound={args.task_log_var_bound}",
+        f"training.task_weight_regularization={args.task_weight_regularization}",
     ]
     if args.lr is not None:
         overrides.append(f"training.lr={args.lr}")
@@ -871,7 +878,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--eval-batch-size", type=int, default=env_int("EVAL_BATCH_SIZE", 128))
     parser.add_argument(
         "--dry-baseline-method",
-        default=env("DRY_BASELINE_METHOD", "mean"),
+        default=env("DRY_BASELINE_METHOD", "geo_weighted"),
         choices=["mean", "geo_weighted", "matched"],
         help="Dry baseline method: mean, geo_weighted, or legacy matched.",
     )
@@ -893,6 +900,12 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dry-baseline-geo-elevation-scale-deg", type=float, default=env_float("DRY_BASELINE_GEO_ELEVATION_SCALE_DEG", 10.0))
     parser.add_argument("--dry-baseline-geo-azimuth-scale-deg", type=float, default=env_float("DRY_BASELINE_GEO_AZIMUTH_SCALE_DEG", 45.0))
     parser.add_argument("--auxiliary-loss-weight", type=float, default=env_float("AUXILIARY_LOSS_WEIGHT", 0.3))
+    parser.add_argument("--use-modal-encoders", type=parse_bool, default=env_bool("USE_MODAL_ENCODERS", True), metavar="{0,1}")
+    parser.add_argument("--use-conditioning", type=parse_bool, default=env_bool("USE_CONDITIONING", True), metavar="{0,1}")
+    parser.add_argument("--use-quality-gating", type=parse_bool, default=env_bool("USE_QUALITY_GATING", True), metavar="{0,1}")
+    parser.add_argument("--adaptive-task-weighting", type=parse_bool, default=env_bool("ADAPTIVE_TASK_WEIGHTING", True), metavar="{0,1}")
+    parser.add_argument("--task-log-var-bound", type=float, default=env_float("TASK_LOG_VAR_BOUND", 1.5))
+    parser.add_argument("--task-weight-regularization", type=float, default=env_float("TASK_WEIGHT_REGULARIZATION", 0.01))
     parser.add_argument("--lr", default=env("LR"))
     parser.add_argument("--e-layers", type=int, default=env("E_LAYERS"))
     parser.add_argument("--d-layers", type=int, default=env("D_LAYERS"))

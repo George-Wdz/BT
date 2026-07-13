@@ -86,6 +86,35 @@ class GroupedPatchEmbedding(nn.Module):
         return out, patch_mask
 
 
+class ModalEncoder(nn.Module):
+    """Small modality-specific residual encoder, deliberately compact for small data."""
+    def __init__(self, d_model: int, dropout: float):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.LayerNorm(d_model), nn.Linear(d_model, d_model * 2), nn.SiLU(),
+            nn.Dropout(dropout), nn.Linear(d_model * 2, d_model),
+        )
+
+    def forward(self, x):
+        return x + self.net(x)
+
+
+class ConditionalLayerNorm(nn.Module):
+    """FuXi-inspired bounded adaLN conditioning."""
+    def __init__(self, d_model: int, condition_dim: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
+        self.modulation = nn.Sequential(nn.SiLU(), nn.Linear(condition_dim, 2 * d_model))
+        nn.init.zeros_(self.modulation[-1].weight)
+        nn.init.zeros_(self.modulation[-1].bias)
+
+    def forward(self, x, condition):
+        scale, shift = self.modulation(condition).chunk(2, dim=-1)
+        while scale.ndim < x.ndim:
+            scale, shift = scale.unsqueeze(1), shift.unsqueeze(1)
+        return self.norm(x) * (1.0 + 0.1 * torch.tanh(scale)) + shift
+
+
 class GroupAttentionPatchEmbedding(nn.Module):
     """
     物理分组 attention patching：先按 feature group 编码，再在每个 patch 内做组间 attention。
@@ -226,7 +255,7 @@ class EncoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x, key_padding_mask=None):
+    def forward(self, x, key_padding_mask=None, condition=None):
         if key_padding_mask is not None and key_padding_mask.dtype != torch.bool:
             key_padding_mask = key_padding_mask.bool()
         h = self.norm1(x)
@@ -361,6 +390,9 @@ class PatchEncoderDecoder(nn.Module):
             raise ValueError(f"unsupported model.fusion_mode={self.fusion_mode}; expected cm/cw/ga")
         self.use_channel_attn = self.fusion_mode == "cw"
         self.use_summary_token = mc.get("use_summary_token", True)
+        self.use_modal_encoders = mc.get("use_modal_encoders", True)
+        self.use_conditioning = mc.get("use_conditioning", True)
+        self.use_quality_gating = mc.get("use_quality_gating", True)
         self.feature_group_dims = mc.get("feature_group_dims", [6, 6, 3])
         assert sum(self.feature_group_dims) == input_dim, \
             f"feature_group_dims sum {sum(self.feature_group_dims)} != input_dim {input_dim}"
@@ -375,6 +407,12 @@ class PatchEncoderDecoder(nn.Module):
         # Satellite Embedding：索引0=未知卫星
         self.sat_embedding = nn.Embedding(num_satellites, sat_emb_dim)
         self.sat_proj = nn.Linear(sat_emb_dim, d_model)
+        condition_input_dim = int(mc.get("condition_input_dim", 10))
+        self.condition_encoder = nn.Sequential(
+            nn.Linear(condition_input_dim + d_model, d_model), nn.SiLU(),
+            nn.LayerNorm(d_model),
+        )
+        self.input_adaln = ConditionalLayerNorm(d_model, d_model)
 
         # Encoder（根据消融开关选择）
         if self.fusion_mode == "cw":
@@ -409,6 +447,15 @@ class PatchEncoderDecoder(nn.Module):
             ])
             self.channel_fuse = None
 
+        n_groups = len(self.feature_group_dims)
+        self.modal_encoders = nn.ModuleList([
+            ModalEncoder(d_model, dropout) for _ in range(n_groups)
+        ])
+        self.quality_gate = nn.Sequential(
+            nn.Linear(d_model + 1, max(d_model // 2, 16)), nn.SiLU(),
+            nn.Linear(max(d_model // 2, 16), 1),
+        )
+
         self.enc_pos = PositionalEncoding(d_model, dropout=dropout)
         self.enc_norm = nn.LayerNorm(d_model)
         self.summary_embed = (
@@ -425,7 +472,12 @@ class PatchEncoderDecoder(nn.Module):
         # 输出头：雨量直接输出物理空间的非负 mm 值。
         self.rainfall_head = nn.Linear(d_model, 1)
         self.rain_cls_head = nn.Linear(d_model, 1)
-        self.aux_head = nn.Linear(d_model, n_targets - 1) if n_targets > 1 else None
+        self.aux_heads = nn.ModuleList([
+            nn.Linear(d_model, 1) for _ in range(max(n_targets - 1, 0))
+        ])
+        self.aux_target_names = list(cfg["targets"].get("auxiliary", []))
+        # rainfall, classification and auxiliary tasks; bounded in compute_loss.
+        self.task_log_vars = nn.Parameter(torch.zeros(2 + len(self.aux_heads)))
         self.nonnegative_rainfall = mc.get("nonnegative_rainfall", True)
 
         self._init_weights()
@@ -435,7 +487,7 @@ class PatchEncoderDecoder(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, features, mask, satellite_idx):
+    def forward(self, features, mask, satellite_idx, condition=None, modal_quality=None):
         """
         features: (B, T, input_dim)
         mask: (B, T) bool  True=真实数据, False=padding
@@ -445,12 +497,25 @@ class PatchEncoderDecoder(nn.Module):
             mask = mask.bool()
         B = features.size(0)
         sat_emb = self.sat_proj(self.sat_embedding(satellite_idx))  # (B, d)
+        if condition is None:
+            condition = features.new_zeros(B, 10)
+        cond = self.condition_encoder(torch.cat([condition, sat_emb], dim=-1))
 
         if self.fusion_mode == "cw":
             # Two-stage 模式
             enc_in, patch_mask = self.enc_patch_embed(features, mask)  # (B, N, G, d)
+            if self.use_modal_encoders:
+                enc_in = torch.stack([
+                    encoder(enc_in[:, :, i]) for i, encoder in enumerate(self.modal_encoders)
+                ], dim=2)
+            if self.use_quality_gating and modal_quality is not None:
+                quality = modal_quality[:, None, :, None].expand(-1, enc_in.size(1), -1, -1)
+                gate = torch.sigmoid(self.quality_gate(torch.cat([enc_in, quality], dim=-1)))
+                enc_in = enc_in * gate * quality
             # 加 satellite embedding（广播到所有 patch 和 group）
             enc_in = enc_in + sat_emb.unsqueeze(1).unsqueeze(1)
+            if self.use_conditioning:
+                enc_in = self.input_adaln(enc_in, cond)
             # 加位置编码（在时间维上）：先 reshape 到 (B*G, N, d) 加完再 reshape 回去
             B_, N, G, D = enc_in.shape
             enc_in_t = enc_in.permute(0, 2, 1, 3).reshape(B_ * G, N, D)
@@ -469,6 +534,8 @@ class PatchEncoderDecoder(nn.Module):
             # Channel-mixing / group-attention 模式
             enc_in, patch_mask = self.enc_patch_embed(features, mask)  # (B, N, d)
             enc_in = enc_in + sat_emb.unsqueeze(1)
+            if self.use_conditioning:
+                enc_in = self.input_adaln(enc_in, cond)
             enc_in = self.enc_pos(enc_in)
             enc_pad_mask = ~patch_mask
             enc_out = enc_in
@@ -487,6 +554,7 @@ class PatchEncoderDecoder(nn.Module):
                 dim=1,
             )
 
+
         # Decoder
         dec_in = self.target_queries.unsqueeze(0).expand(B, -1, -1)
         dec_out = dec_in
@@ -500,9 +568,18 @@ class PatchEncoderDecoder(nn.Module):
         if self.nonnegative_rainfall:
             rainfall = torch.nn.functional.softplus(rainfall)
         rain_logit = self.rain_cls_head(rain_repr).squeeze(-1)
-        if self.aux_head is not None:
-            aux_input = dec_out[:, 1:].mean(dim=1)
-            auxiliary = self.aux_head(aux_input)
+        if self.aux_heads:
+            aux_values = []
+            for i, (name, head) in enumerate(zip(self.aux_target_names, self.aux_heads)):
+                value = head(dec_out[:, i + 1])
+                if name in {"rain_rate_mean", "rain_rate_max"}:
+                    # Auxiliary labels are standardized; do not force positivity here.
+                    pass
+                elif name == "rainy_ratio":
+                    # Also standardized during training, so retain an unconstrained head.
+                    pass
+                aux_values.append(value)
+            auxiliary = torch.cat(aux_values, dim=-1)
         else:
             auxiliary = None
         return rainfall, auxiliary, rain_logit

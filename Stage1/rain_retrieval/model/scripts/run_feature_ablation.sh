@@ -7,10 +7,9 @@
 # be included.
 # Default variants:
 #   full_a       = link + position + ground_weather + image_weather + dry_delta
-#   core_e       = link + position + dry_delta
-#   no_position  = link + ground_weather + image_weather + dry_delta
 #   no_image     = link + position + ground_weather + dry_delta
 #   no_ground    = link + position + image_weather + dry_delta
+#   no_dry_delta = link + position + ground_weather + image_weather
 #
 # 固定数据建议：
 #   消融实验必须尽量固定同一个 NPZ，否则不同特征组合之间的数据样本不同，指标不可直接比较。
@@ -36,7 +35,7 @@ python_cmd=(
   python3 run_workflow.py feature-ablation
   --cuda-visible-devices 7                                                                       # 训练/评估使用的 GPU；多卡可写 0,1,2,3
   --experiment feature_ablation                                                                  # 实验名称，参与默认 dataset_name 命名
-  --variants full_a,core_e,no_position,no_image,no_ground                                         # 要运行的特征消融组合，逗号分隔
+  --variants full_a,no_image,no_ground,no_dry_delta                                               # 只消融可选信息源；geo4位置作为物理必需量固定保留
   --reuse-dataset 1                                                                               # 1=复用老数据；消融固定同一个 NPZ，保证不同特征组合公平对比
   --pass-dataset-path /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260618_1536.npz # 消融复用的 NPZ pass 数据集；不会重新切片
   # --pass-dataset-path /home/wdz/BT/Stage1/rain_retrieval/model/data/datasets/pass_dataset_rain_retrieval_20260623_1344.npz # 示例：改成最近一次 workflow 生成的 NPZ
@@ -46,8 +45,8 @@ python_cmd=(
   --checkpoint-base /home/wdz/BT/Stage1/rain_retrieval/model/checkpoints                         # 模型 checkpoint 根目录
   --result-base /home/wdz/BT/Stage1/rain_retrieval/analysis/satellite_weather_diff/runs          # 预测 CSV 和指标输出根目录
   --log-dir /home/wdz/BT/Stage1/rain_retrieval/model/logs                                        # workflow/train 日志目录
-  --position-mode raw6                                                                            # 位置特征模式：raw6/raw6_geo2/raw6_geo4/geo4；消融复用 NPZ 时需与 NPZ 特征一致
-  --fusion-mode cm                                                                               # 特征融合模式：cm=channel-mixing；cw=channel-wise/two-stage；ga=group-attention
+  --position-mode geo4                                                                            # 位置统一使用传播几何四维；复用NPZ必须包含geo4
+  --fusion-mode cw                                                                               # 使用新版多模态独立编码与时间/通道两阶段融合
   --group-hidden-dim 128                                                                         # ga 模式下每个物理特征组 token 的隐藏维度
   --group-attention-heads 4                                                                      # ga 模式下组间 self-attention 头数
   --group-attention-layers 1                                                                     # ga 模式下组间 self-attention 层数；可试 1/2
@@ -58,7 +57,7 @@ python_cmd=(
   --batch-size 64                                                                                # 训练 batch size
   --patience 15                                                                                  # early stopping 容忍 epoch 数
   --lr 0.0001                                                                                    # 初始学习率
-  --dry-baseline-method mean                                                                      # dry baseline 方法：mean=同卫星均值；geo_weighted=同卫星几何加权 top-k 与均值混合
+  --dry-baseline-method geo_weighted                                                              # 所有特征消融固定使用几何加权无雨参考
   --dry-baseline-image-rain-prob-threshold 0.2                                                    # dry baseline 候选中排除视觉雨天的概率阈值
   --dry-baseline-require-image-available 0                                                        # 0=无图像也可参与 dry baseline；1=只用有相机标签的 pass
   --dry-baseline-min-sunny-prob 0.0                                                               # >0 时要求 prob_sunny 不低于该阈值；0=不启用 sunny 阈值
@@ -69,6 +68,9 @@ python_cmd=(
   --dry-baseline-geo-elevation-scale-deg 10                                                       # elevation 差异归一化尺度，单位 degree
   --dry-baseline-geo-azimuth-scale-deg 45                                                         # azimuth 差异归一化尺度，单位 degree
   --auxiliary-loss-weight 0.3                                                                    # 辅助目标损失权重
+  --adaptive-task-weighting 0                                                                    # 固定任务权重，避免与特征消融混杂
+  --task-log-var-bound 1.5                                                                       # 自适应任务log方差绝对边界
+  --task-weight-regularization 0.01                                                              # 防止小数据下任务权重漂移
   --eval-batch-size 128                                                                          # 训练后评估 batch size
 )
 

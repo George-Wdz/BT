@@ -30,7 +30,8 @@ from utils.tools import EarlyStopping, adjust_learning_rate, vali, test
 SCIENTIFIC_FLOAT = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)[eE][+-]?\d+$")
 
 
-def compute_loss(rain_pred, aux_pred, rain_logit, labels, labels_phys, cfg):
+def compute_loss(rain_pred, aux_pred, rain_logit, labels, labels_phys, cfg,
+                 task_log_vars=None):
     """
     rain_pred: (B, 1)
     aux_pred:  (B, n_aux) or None
@@ -46,7 +47,7 @@ def compute_loss(rain_pred, aux_pred, rain_logit, labels, labels_phys, cfg):
         rain_pred.squeeze(-1), rain_true, reduction="none"
     )
     loss_rain = (per_sample * sample_weight).mean()
-    total = w * loss_rain
+    losses = [w * loss_rain]
     cls_weight = cfg["training"].get("rain_classification_loss_weight", 0.0)
     if cls_weight > 0:
         pos_weight = torch.tensor(
@@ -56,10 +57,20 @@ def compute_loss(rain_pred, aux_pred, rain_logit, labels, labels_phys, cfg):
         loss_cls = nn.functional.binary_cross_entropy_with_logits(
             rain_logit, rainy, pos_weight=pos_weight
         )
-        total = total + cls_weight * loss_cls
+        losses.append(cls_weight * loss_cls)
     if aux_pred is not None and labels.shape[-1] > 1:
-        loss_aux = nn.MSELoss()(aux_pred, labels[:, 1:])
-        total = total + cfg["training"].get("auxiliary_loss_weight", 1.0) * loss_aux
+        aux_losses = nn.functional.mse_loss(aux_pred, labels[:, 1:], reduction="none").mean(0)
+        losses.extend(cfg["training"].get("auxiliary_loss_weight", 1.0) * x for x in aux_losses)
+    if cfg["training"].get("adaptive_task_weighting", True) and task_log_vars is not None:
+        bound = float(cfg["training"].get("task_log_var_bound", 1.5))
+        reg = float(cfg["training"].get("task_weight_regularization", 0.01))
+        used = task_log_vars[:len(losses)]
+        bounded = bound * torch.tanh(used / max(bound, 1e-6))
+        stacked = torch.stack(losses)
+        total = (torch.exp(-bounded) * stacked + bounded).sum()
+        total = total + reg * used.square().mean()
+    else:
+        total = torch.stack(losses).sum()
     return total, loss_rain
 
 
@@ -94,9 +105,14 @@ def train_one_epoch(model, loader, optimizer, cfg, device):
         labels_phys = batch["labels_phys"].to(device)
 
         optimizer.zero_grad()
-        rain_pred, aux_pred, rain_logit = model(features, mask, sat_idx)
+        condition = batch["condition"].to(device)
+        modal_quality = batch["modal_quality"].to(device)
+        rain_pred, aux_pred, rain_logit = model(
+            features, mask, sat_idx, condition, modal_quality
+        )
         loss, rain_loss = compute_loss(
-            rain_pred, aux_pred, rain_logit, labels, labels_phys, cfg
+            rain_pred, aux_pred, rain_logit, labels, labels_phys, cfg,
+            model.task_log_vars,
         )
         loss.backward()
         if grad_clip and grad_clip > 0:
@@ -253,6 +269,7 @@ def _coerce_numeric(cfg: dict):
         "group_hidden_dim",
         "group_attention_heads",
         "group_attention_layers",
+        "condition_input_dim",
     ):
         if k in m and isinstance(m[k], str):
             m[k] = int(m[k])
@@ -270,6 +287,8 @@ def _coerce_numeric(cfg: dict):
         "rain_classification_loss_weight",
         "rain_classification_pos_weight",
         "auxiliary_loss_weight",
+        "task_log_var_bound",
+        "task_weight_regularization",
         "grad_clip",
         "decay_fac",
     ):

@@ -26,12 +26,10 @@ features:
     - snr
     - lastCniValue
   position:  # 卫星 + 地面终端经纬度海拔
-    - longitude
-    - latitude
-    - satAltitude
-    - posLongitude
-    - posLatitude
-    - altitude
+    - slant_range_km
+    - elevation_deg
+    - azimuth_sin
+    - azimuth_cos
   ground_weather:  # weather_data
     - temperature
     - humidity
@@ -45,7 +43,7 @@ image_weather:
 dry_baseline:
   enabled: true
   rain_threshold: 1e-6
-  method: "mean"              # mean: 同卫星训练集无雨均值；geo_weighted: 同卫星内按几何相似度加权 top-k 后与均值混合；matched: 旧版最近 pass
+  method: "geo_weighted"      # 默认：同卫星几何加权 top-k 与卫星无雨均值混合
   add_summary: false          # true 时附加 dry delta 的 mean/std/min/max/range/slope 统计值
   exclude_instant_rain: true   # 构建 dry baseline 时排除 rain_rate_max>阈值的短时雨 pass
   exclude_image_rain: true     # 构建 dry baseline 时排除视觉模型认为下雨的 pass
@@ -71,7 +69,7 @@ targets:
     - rainy_ratio    # 辅助任务：过境窗口内瞬时有雨比例
 
 model:
-  input_dim: 21          # link(4) + position(6) + ground_weather(3) + image_weather(4) + dry_delta(4)
+  input_dim: 19          # link(4) + geo4(4) + ground_weather(3) + image_weather(4) + dry_delta(4)
   max_seq_len: 256       # 单次过境最大长度，超过截断；不足 padding
   patch_len: 8           # 每个patch包含的时间步数（过境短，patch_len小一些）
   stride: 4              # patch滑动步长（50%重叠）
@@ -88,15 +86,21 @@ model:
   # cm: channel-mixing，全部特征拼接后投影成 patch token
   # cw: channel-wise/two-stage，先时间 attention，后特征组 attention
   # ga: group-attention，按物理特征组生成 group tokens，再组间 attention 融合成 patch token
-  fusion_mode: "cm"
-  use_channel_attention: false
-  feature_group_dims: [4, 6, 3, 4, 4]  # link / position / ground_weather / image_weather / dry_delta
+  fusion_mode: "cw"
+  use_channel_attention: true
+  feature_group_dims: [4, 4, 3, 4, 4]  # link / geo4 / ground_weather / image_weather / dry_delta
   group_hidden_dim: 128
   group_attention_heads: 4
   group_attention_layers: 1
   group_attention_dropout: 0.1
   nonnegative_rainfall: true
   use_summary_token: true
+  # Lightweight modality encoders and context conditioning.
+  # Conditions are derived at dataset load time, so existing NPZ files remain valid.
+  use_modal_encoders: true
+  use_conditioning: true
+  condition_input_dim: 10
+  use_quality_gating: true
 
 training:
   seed: 42
@@ -113,6 +117,10 @@ training:
   rain_classification_loss_weight: 0.5
   rain_classification_pos_weight: 20.0
   auxiliary_loss_weight: 0.3
+  # Bounded uncertainty weighting is safer than unconstrained task weights on small data.
+  adaptive_task_weighting: false
+  task_log_var_bound: 1.5
+  task_weight_regularization: 0.01
   use_rainy_sampler: true
   rainy_sample_weight: 20.0
   grad_clip: 1.0

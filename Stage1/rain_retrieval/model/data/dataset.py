@@ -88,6 +88,8 @@ class PassDataset(Dataset):
         self.features = []   # List of (T_i, 13)
         self.lengths = []
         self.sat_indices = []
+        self.conditions = []
+        self.modal_quality = []
         labels_list = []
 
         for p in passes:
@@ -141,6 +143,9 @@ class PassDataset(Dataset):
             self.features.append(feat)
             self.lengths.append(len(feat))
             self.sat_indices.append(sat_mapper(p["satellite_id"]))
+            condition, quality = self._build_context(p)
+            self.conditions.append(condition)
+            self.modal_quality.append(quality)
             labels_list.append(self._select_labels(p))
 
         self.labels_phys = np.stack(labels_list).astype(np.float32)  # (N, 3)
@@ -161,6 +166,48 @@ class PassDataset(Dataset):
                          for f in self.features]
         self.labels = self.scaler_y.transform(self.labels_phys).astype(np.float32)
         self.input_dim = self.features[0].shape[1] if self.features else INPUT_DIM
+
+    def _build_context(self, p: Dict) -> tuple[np.ndarray, np.ndarray]:
+        """Build conditioning/quality features at load time; no NPZ rebuild required."""
+        ts = np.asarray(p["timestamps"]).astype("datetime64[ns]")
+        start_ns = int(ts[0].astype(np.int64))
+        end_ns = int(ts[-1].astype(np.int64))
+        center_s = (start_ns + end_ns) / 2e9
+        day_s = 86400.0
+        year_s = 365.2425 * day_s
+        tod = (center_s % day_s) / day_s
+        doy = (center_s % year_s) / year_s
+        duration = max((end_ns - start_ns) / 1e9, 0.0)
+
+        # Geometry is optional for old NPZ files. Values are scaled to benign ranges.
+        geo = np.zeros(4, dtype=np.float32)
+        columns = p.get("feature_columns", {}).get("position", [])
+        required = ["slant_range_km", "elevation_deg", "azimuth_sin", "azimuth_cos"]
+        position = np.asarray(p.get("position_features", []), dtype=np.float32)
+        if columns and position.ndim == 2 and all(c in columns for c in required):
+            idx = [columns.index(c) for c in required]
+            geo = np.nanmean(position[:, idx], axis=0).astype(np.float32)
+            geo[:2] /= np.asarray([2000.0, 90.0], dtype=np.float32)
+        condition = np.asarray([
+            np.sin(2 * np.pi * tod), np.cos(2 * np.pi * tod),
+            np.sin(2 * np.pi * doy), np.cos(2 * np.pi * doy),
+            min(duration / 600.0, 3.0), min(len(ts) / max(self.max_len, 1), 1.0),
+            *geo.tolist(),
+        ], dtype=np.float32)
+
+        # One reliability value per configured modality. Missing modalities are masked.
+        quality = []
+        for group in (self.feature_groups or ["link", "position", "ground_weather"]):
+            key = FEATURE_GROUP_TO_PASS_KEY[group]
+            arr = np.asarray(p.get(key, []), dtype=np.float32)
+            if arr.size == 0:
+                q = 0.0
+            else:
+                q = float(np.isfinite(arr).mean())
+            if group == "image_weather" and arr.ndim == 2 and arr.shape[1] >= 4:
+                q *= float(np.nanmax(arr[:, 3]) > 0)
+            quality.append(q)
+        return condition, np.asarray(quality, dtype=np.float32)
 
     def _select_labels(self, p: Dict) -> np.ndarray:
         base = np.asarray(p["labels"], dtype=np.float32)
@@ -201,6 +248,8 @@ class PassDataset(Dataset):
             "mask": torch.from_numpy(mask),            # (max_len,)
             "length": T,
             "satellite_idx": self.sat_indices[idx],
+            "condition": torch.from_numpy(self.conditions[idx]),
+            "modal_quality": torch.from_numpy(self.modal_quality[idx]),
             "labels": torch.from_numpy(self.labels[idx]),  # (3,)
             "labels_phys": torch.from_numpy(self.labels_phys[idx]),  # (3,)
         }
