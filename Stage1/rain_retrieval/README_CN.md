@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-Stage1 使用卫星链路遥测、卫星/终端位置、地面气象和可选的相机天气概率，反演一次卫星过境期间的降雨量。它解决的是当前过境窗口内的降雨反演，不负责未来预测；未来预测由 Stage2 处理。
+Stage1 使用卫星链路遥测、星地传播几何、地面气象和可选的相机天气概率，反演一次卫星过境期间的降雨量。它解决的是当前过境窗口内的降雨反演，不负责未来预测；未来预测由 Stage2 处理。
 
 ## 范围
 
@@ -21,7 +21,7 @@ Stage1 使用卫星链路遥测、卫星/终端位置、地面气象和可选的
 | 分组 | 特征 |
 | --- | --- |
 | 链路 | `phyRssi`、`rssi`、`snr`、`lastCniValue` |
-| 位置 | 卫星经纬高和终端经纬高 |
+| 传播几何（geo4） | `slant_range_km`、`elevation_deg`、`azimuth_sin`、`azimuth_cos` |
 | 地面气象 | `temperature`、`humidity`、`pressure` |
 | 图像天气 | `prob_sunny`、`prob_cloudy`、`prob_rain`、`image_available` |
 | dry baseline 差分 | 当前链路特征减去训练集无雨基线 |
@@ -29,7 +29,7 @@ Stage1 使用卫星链路遥测、卫星/终端位置、地面气象和可选的
 默认输入维度：
 
 ```text
-4 + 6 + 3 + 4 + 4 = 21
+4 + 4 + 3 + 4 + 4 = 19
 ```
 
 ## 数据对齐
@@ -42,7 +42,7 @@ Stage1 使用卫星链路遥测、卫星/终端位置、地面气象和可选的
 | 最短 pass | 至少 10 个有效链路样本。 |
 | 位置对齐 | 最近邻匹配，容忍 5 秒。 |
 | 地面气象对齐 | 最近邻匹配，容忍 60 秒。 |
-| 图像天气对齐 | 按 pass 中心匹配最近图像标签，默认容忍 10 分钟。 |
+| 图像天气对齐 | 按 pass 中心匹配最近图像标签，推荐流程默认容忍 6 分钟。 |
 | 雨量标签 | 对 `rainfall_cumulative` 在 pass 起止边界做日内插值，再差分。 |
 
 瞬时 `rainfall` 只作为诊断字段或辅助监督，不作为主累计雨量目标。
@@ -65,24 +65,27 @@ Stage1/rain_retrieval/model/patch_encoder_decoder.py
 - rain/no-rain 分类头；
 - 可选辅助回归头。
 
-支持两种 encoder：
+支持三种融合模式：
 
 | 模式 | 配置 | 说明 |
 | --- | --- | --- |
-| channel-mixing | `model.use_channel_attention=false` | 拼接所有特征后做 patch embedding。 |
-| channel-wise | `model.use_channel_attention=true` | 各特征组独立 embedding，再做时间注意力和通道注意力。 |
+| channel-mixing | `model.fusion_mode=cm` | 拼接所有特征后做 patch embedding。 |
+| channel-wise | `model.fusion_mode=cw` | 各特征组独立编码，再做时间注意力和模态注意力。当前默认。 |
+| group-attention | `model.fusion_mode=ga` | patch 内先做物理特征组注意力，再进行时间编码。 |
 
-当前版本默认使用双路径结构：CM 路径负责累计雨量和雨强回归，CW 路径负责
-rain/no-rain 分类。位置固定使用 `geo4`（斜距、仰角、方位角正余弦），并加入：
+当前模型是单路径 CW 模型：累计雨量回归、rain/no-rain 分类和辅助目标共享同一个
+多模态编码器和 target-query decoder，不包含独立的 CM 回归路径。模型加入：
 
 - 轻量模态专用编码器与质量门控；
 - 卫星、时间和传播几何条件化 LayerNorm；
 - 每个辅助目标独立的 target query 与输出头；
-- 带边界和正则项的自适应多任务不确定性权重。
 
-时间周期、pass 长度和可用的斜距/仰角/方位角均在加载 NPZ 时动态派生，旧数据集
-无需重建；旧 NPZ 没有几何派生列时自动使用零值回退。小数据集可通过
-`training.adaptive_task_weighting=false` 关闭自适应权重。
+时间周期和 pass 长度在加载 NPZ 时动态派生。默认输入直接使用 geo4，因此 NPZ
+必须包含几何派生列；只有 raw6 而没有 geo4 的旧 NPZ 需要重建。自适应多任务权重
+保留为实验选项，但因小数据下波动较大，默认关闭。
+
+默认 dry baseline 使用训练集内同卫星、几何相近的无雨 pass 做 top-k 加权，并与
+同卫星无雨均值混合；验证集和测试集标签不参与 baseline 拟合。
 
 ## 训练
 
@@ -119,11 +122,10 @@ bash scripts/run_feature_ablation.sh \
 默认特征消融组合：
 
 ```text
-full_a       = link + position + ground_weather + image_weather + dry_delta
-core_e       = link + position + dry_delta
-no_position  = link + ground_weather + image_weather + dry_delta
-no_image     = link + position + ground_weather + dry_delta
-no_ground    = link + position + image_weather + dry_delta
+full_a        = link + geo4 + ground_weather + image_weather + dry_delta
+no_image      = link + geo4 + ground_weather + dry_delta
+no_ground     = link + geo4 + image_weather + dry_delta
+no_dry_delta  = link + geo4 + ground_weather + image_weather
 ```
 
 如果只需要低层单次训练，可以直接调用 `python main.py --set ...`。

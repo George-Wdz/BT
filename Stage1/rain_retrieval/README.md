@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-Stage1 retrieves rainfall during each satellite pass from satellite-link telemetry, satellite/terminal position, ground weather, and optional camera-derived weather probabilities. It estimates current pass-level rainfall; future forecasting is handled by Stage2.
+Stage1 retrieves rainfall during each satellite pass from satellite-link telemetry, satellite--ground propagation geometry, ground weather, and optional camera-derived weather probabilities. It estimates current pass-level rainfall; future forecasting is handled by Stage2.
 
 ## Scope
 
@@ -21,7 +21,7 @@ The current recommended configuration uses:
 | Group | Features |
 | --- | --- |
 | Link | `phyRssi`, `rssi`, `snr`, `lastCniValue` |
-| Position | satellite longitude/latitude/altitude and terminal longitude/latitude/altitude |
+| Propagation geometry (geo4) | `slant_range_km`, `elevation_deg`, `azimuth_sin`, `azimuth_cos` |
 | Ground weather | `temperature`, `humidity`, `pressure` |
 | Image weather | `prob_sunny`, `prob_cloudy`, `prob_rain`, `image_available` |
 | Dry baseline delta | same link features minus the train-set dry baseline |
@@ -29,7 +29,7 @@ The current recommended configuration uses:
 The resulting default input dimension is:
 
 ```text
-4 + 6 + 3 + 4 + 4 = 21
+4 + 4 + 3 + 4 + 4 = 19
 ```
 
 ## Data Alignment
@@ -42,7 +42,7 @@ Pass construction and alignment are implemented in `Stage1/rain_retrieval/model/
 | Minimum pass length | 10 valid link samples. |
 | Position alignment | Nearest timestamp within 5 seconds. |
 | Ground weather alignment | Nearest timestamp within 60 seconds. |
-| Image weather alignment | Nearest image-label timestamp around pass center, default tolerance 10 minutes. |
+| Image weather alignment | Nearest image-label timestamp around pass center; the recommended workflow uses a 6-minute tolerance. |
 | Rainfall label | Daily cumulative rainfall interpolated at pass start/end, then differenced. |
 
 Instantaneous rainfall is kept for diagnostics and auxiliary targets; it is not used as the primary accumulated-rainfall target.
@@ -61,12 +61,17 @@ Core components:
 - rain/no-rain classification head;
 - optional auxiliary regression heads.
 
-Two encoder modes are available:
+Three fusion modes are available:
 
 | Mode | Config | Description |
 | --- | --- | --- |
-| channel-mixing | `model.use_channel_attention=false` | Concatenate all features before patch embedding. |
-| channel-wise | `model.use_channel_attention=true` | Embed feature groups separately, then apply temporal and channel attention. |
+| channel-mixing | `model.fusion_mode=cm` | Concatenate all features before patch embedding. |
+| channel-wise | `model.fusion_mode=cw` | Encode groups separately, then apply temporal and modality attention. This is the default. |
+| group-attention | `model.fusion_mode=ga` | Apply physical-group attention within each patch before temporal encoding. |
+
+The current model is a single-path CW model. Rainfall regression, rain/no-rain classification, and auxiliary targets share the same multimodal encoder and target-query decoder; there is no separate CM regression branch. The default model uses lightweight modality-specific encoders, modality-quality gating, contextual conditioning, and one target-specific query/head for each auxiliary output.
+
+Time-cycle and pass-length conditions are derived while loading the NPZ. Because geo4 is part of the default model input, the NPZ must contain the derived geometry columns; raw6-only legacy datasets must be rebuilt. Adaptive task weighting remains available for experiments but is disabled by default. The default dry baseline uses geometry-weighted top-k training-dry references blended with the same-satellite dry mean.
 
 ## Training
 
@@ -104,11 +109,10 @@ bash scripts/run_feature_ablation.sh \
 Default feature-ablation variants:
 
 ```text
-full_a       = link + position + ground_weather + image_weather + dry_delta
-core_e       = link + position + dry_delta
-no_position  = link + ground_weather + image_weather + dry_delta
-no_image     = link + position + ground_weather + dry_delta
-no_ground    = link + position + image_weather + dry_delta
+full_a        = link + geo4 + ground_weather + image_weather + dry_delta
+no_image      = link + geo4 + ground_weather + dry_delta
+no_ground     = link + geo4 + image_weather + dry_delta
+no_dry_delta  = link + geo4 + ground_weather + image_weather
 ```
 
 For a single low-level training run, call `python main.py --set ...` directly.
@@ -129,6 +133,10 @@ Available validation strategies:
 | `stratified_before_test` | Last 10% of time remains test; train/validation are stratified before that point. Better for online-style validation. |
 
 Scalers, satellite ID mapping, and dry-baseline references are fitted from the training split only.
+
+`evaluate_checkpoint_splits.py` reports overall/rainy/dry regression metrics,
+rain-classification precision, recall, F1, PR-AUC, ROC-AUC and false-alarm rate,
+plus rainfall-severity, satellite, image-availability and optional elevation slices.
 
 ## Outputs
 
