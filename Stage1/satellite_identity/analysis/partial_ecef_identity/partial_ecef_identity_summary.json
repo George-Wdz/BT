@@ -1,0 +1,23 @@
+{
+  "source": {
+    "rows_scanned": 4859535,
+    "not_partial_two_axis_ecef": 2685805,
+    "partial_rows": 2173730,
+    "partial_identities": 528
+  },
+  "scored_identities": 520,
+  "accepted_calibration_identities": 268,
+  "accepted_top1_correct": 5,
+  "accepted_top1_accuracy": 0.018656716417910446,
+  "correct_best_error_km": {
+    "median": 1312.5135788809725,
+    "p90": 3060.858569705856,
+    "max": 3128.315748684547
+  },
+  "correct_margin_km": {
+    "median": 63.25132184153017,
+    "p10": 13.498468799131683
+  },
+  "nonaccepted_candidates": 252,
+  "policy": "Calibration only. No database or canonical mapping is modified by this script."
+}

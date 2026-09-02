@@ -10,6 +10,9 @@ export TOKENIZERS_PARALLELISM=false
 
 cd /home/wdz/BT/MoE/lora-moe
 
+source scripts/lib/cuda_visible_devices.sh
+configure_cuda_visible_devices "0,1" "$@"
+
 python_cmd=(
   python -m lora_moe.train.vision_weather_lora
   --cuda-visible-devices 0,1                                                               # 训练使用的 GPU 编号；多卡可写 0,1,2,3

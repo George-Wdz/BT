@@ -15,7 +15,10 @@ from torch.utils.data import DataLoader, Dataset
 VISION_ROOT = Path(__file__).resolve().parent
 STAGE1_ROOT = VISION_ROOT.parent
 
-from models import WeatherClassifier
+try:
+    from .models import WeatherClassifier
+except ImportError:
+    from models import WeatherClassifier
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 

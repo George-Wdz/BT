@@ -1,0 +1,5 @@
+terminal_id: 01-31-0005-0003
+db_path: /home/wdz/satellite_data/satellite_data.db
+adapter_path: /home/wdz/BT/Stage1/terminal_003_rain_retrieval/adapter.json
+min_phy_points: 3
+no_rain_threshold: 0.0

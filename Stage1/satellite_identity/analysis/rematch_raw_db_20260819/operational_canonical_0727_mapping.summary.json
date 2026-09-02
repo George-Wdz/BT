@@ -1,0 +1,14 @@
+{
+  "physical_mapping": "/home/wdz/BT/Stage1/satellite_identity/analysis/rematch_raw_db_20260819/historical_physical_mapping.csv",
+  "output_mapping": "/home/wdz/BT/Stage1/satellite_identity/analysis/rematch_raw_db_20260819/operational_canonical_0727_mapping.csv",
+  "rows": 279,
+  "changed_rows": 73,
+  "policy_counts": {
+    "strict_multi_evidence": 279
+  },
+  "version_counts": {
+    "0429": 73,
+    "0611": 90,
+    "0727": 116
+  }
+}

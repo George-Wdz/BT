@@ -1,0 +1,82 @@
+{
+  "sample_unit": "one gauge-anchored preceding-minute window",
+  "target": "rainfall / 10 in mm; one scalar per window",
+  "window_semantics": "(anchor_time - 60 s, anchor_time]",
+  "position_alignment": "same satellite ID plus nearest timestamp",
+  "base_feature_columns": [
+    "phyRssi",
+    "rssi",
+    "snr",
+    "lastCniValue",
+    "slant_range_km",
+    "elevation_deg",
+    "azimuth_sin",
+    "azimuth_cos",
+    "temperature",
+    "humidity",
+    "pressure",
+    "prob_sunny",
+    "prob_cloudy",
+    "prob_rain",
+    "image_available",
+    "relative_time"
+  ],
+  "base_feature_dim": 16,
+  "dry_delta_added_at_training": true,
+  "model_input_dim_with_dry_delta": 20,
+  "source_rows": {
+    "phy": 979358,
+    "position": 3125591,
+    "weather": 3607778,
+    "gauge": 137314
+  },
+  "position_matched_phy_rows": 652567,
+  "position_fallback_phy_rows": 0,
+  "position_lag_seconds": {
+    "median": 0.71793,
+    "p95": 1.819175,
+    "max": 4.999479
+  },
+  "aligned_phy_rows": 423012,
+  "samples": 3962,
+  "rainy_samples": 189,
+  "split_counts": {
+    "train": 0,
+    "val": 0,
+    "test": 3962
+  },
+  "rainy_split_counts": {
+    "train": 0,
+    "val": 0,
+    "test": 189
+  },
+  "config": {
+    "db_path": "/home/wdz/satellite_data/satellite_data.db",
+    "output_path": "/home/wdz/BT/Stage1/minute_rain_retrieval/data/archive/minute_rainfall_v1_20260825_minphy3_stratified_seed42/processed/minute_rainfall_full.npz",
+    "terminal_id": "01-31-0005-0001",
+    "image_csv": "/home/wdz/BT/Stage1/minute_rain_retrieval/data/archive/minute_rainfall_v1_20260825_minphy3_stratified_seed42/raw/camera_weather_labels.csv",
+    "start_time": null,
+    "end_time": null,
+    "window_seconds": 60.0,
+    "rainfall_scale": 0.1,
+    "min_phy_points": 3,
+    "position_mode": "required",
+    "position_tolerance_seconds": 5.0,
+    "weather_tolerance_seconds": 5.0,
+    "image_tolerance_seconds": 600.0,
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "split_strategy": "stratified_all",
+    "split_seed": 42,
+    "holdout_periods": [],
+    "holdout_buffer_minutes": 60.0,
+    "terminal_protocol": "legacy",
+    "shared_db_path": null,
+    "shared_terminal_id": "01-31-0005-0001",
+    "adapter_path": null,
+    "reference_checkpoint_path": null,
+    "source_output_path": "/home/wdz/BT/Stage1/minute_rain_retrieval/data/online_vision_20260825/minute_rainfall_minphy3.npz",
+    "source_image_csv": "/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels/latest_weather_labels_slim.csv"
+  },
+  "archive_view": "split:test"
+}

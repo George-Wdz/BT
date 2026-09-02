@@ -1,0 +1,4 @@
+Apache ECharts 5.6.0
+Source: https://www.npmjs.com/package/echarts/v/5.6.0
+License: Apache-2.0
+License text: https://www.apache.org/licenses/LICENSE-2.0

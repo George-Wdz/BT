@@ -1,0 +1,49 @@
+[
+  {
+    "role": "early_raw_database",
+    "path": "/home/wdz/BT/Stage1/satellite_data_recovered_20260824.sqlite3",
+    "bytes": 1603743744,
+    "modified_at": "2026-08-24T18:30:51.422453",
+    "sha256": "ee79c6bef1cc2af656899dec245a8503be89281cfe03da712e4a99394a2cbb42"
+  },
+  {
+    "role": "raw_phy_csv",
+    "path": "/home/wdz/satellite_data/工控机采集的原始备份数据/phy_data.csv",
+    "bytes": 425145430,
+    "modified_at": "2026-07-22T15:49:23",
+    "sha256": "c1ecbda6c919003306c77881a0d998df5a8e6c33d1c14dfd938c82dfb82addea"
+  },
+  {
+    "role": "raw_position_csv",
+    "path": "/home/wdz/BT/Stage1/position_data.csv",
+    "bytes": 804631505,
+    "modified_at": "2026-08-19T15:52:12",
+    "sha256": "f1aec510493e502a54006ebc89afabb630131cdd3f30534503f786d243d97260"
+  },
+  {
+    "role": "rain_gauge_database",
+    "path": "/home/wdz/satellite_data/satellite_data.db",
+    "bytes": 5156569088,
+    "modified_at": "2026-08-31T11:07:39.187112",
+    "sha256": "d08e5f8d277d862d500dd12c8b7f1a952a9f858df152b8689e308c55f2e57b2f"
+  },
+  {
+    "role": "source_cutover",
+    "phy_timestamp": "2026-08-24T09:44:40.037731",
+    "position_timestamp": "2026-08-24T09:38:40.330631",
+    "csv_phy_range": [
+      "2026-04-01T18:57:00.041322",
+      "2026-07-22T15:34:20.693039"
+    ],
+    "csv_position_range": [
+      "2026-04-17T14:41:16.882611",
+      "2026-08-19T15:49:02.033048"
+    ],
+    "rule": "pre-clean backup DB through its table maximum; unsorted raw CSV strictly after that maximum"
+  },
+  {
+    "role": "cleaning_rules",
+    "path": "/home/wdz/satellite_data/server.py",
+    "rule": "clean_phy_payload and clean_position_payload as inspected on analysis date"
+  }
+]

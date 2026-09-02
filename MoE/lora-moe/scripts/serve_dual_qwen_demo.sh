@@ -57,10 +57,10 @@ gateway_cmd=(
 
 pids=()
 
-"${qwen_a_cmd[@]}" > logs/dual_qwen/qwen_a.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0,1 "${qwen_a_cmd[@]}" > logs/dual_qwen/qwen_a.log 2>&1 &
 pids+=("$!")
 
-"${qwen_b_cmd[@]}" > logs/dual_qwen/qwen_b.log 2>&1 &
+CUDA_VISIBLE_DEVICES=2,3 "${qwen_b_cmd[@]}" > logs/dual_qwen/qwen_b.log 2>&1 &
 pids+=("$!")
 
 "${gateway_cmd[@]}" > logs/dual_qwen/gateway.log 2>&1 &

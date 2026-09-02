@@ -4,8 +4,8 @@
 
 - 源码：`/home/wdz/BT/Stage1/vision_weather`
 - 默认权重：`weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt`
-- 当前相机图片：`/home/wdz/BT/Stage1/rain_retrieval/data/camera`
-- 当前自动标签输出：`/home/wdz/BT/Stage1/rain_retrieval/data/camera_labels`
+- 当前相机图片：`/home/wdz/BT/Stage1/data/camera/images`
+- 当前自动标签输出：`/home/wdz/BT/Stage1/data/camera/labels`
 
 模块功能：
 - 输入：摄像头天空图像
@@ -117,7 +117,7 @@ python Stage1/vision_weather/eval_weather_classifier.py \
 
 ```bash
 python Stage1/vision_weather/predict_weather_labels.py \
-  --input-dir Stage1/rain_retrieval/data/camera \
+  --input-dir Stage1/data/camera/images \
   --output-dir Stage1/vision_weather \
   --weights Stage1/vision_weather/weights/20260605_182036_weather_cls_more_cloudy_gpu_30ep_best_model.pt
 ```

@@ -10,13 +10,16 @@ export TOKENIZERS_PARALLELISM=false
 
 cd /home/wdz/BT/MoE/lora-moe
 
+source scripts/lib/cuda_visible_devices.sh
+configure_cuda_visible_devices "0,1" "$@"
+
 python_cmd=(
   python -m lora_moe.infer.vision_weather
   --cuda-visible-devices 0,1                                                               # 推理使用的 GPU 编号；多卡可写 0,1,2,3
   --model-dir /home/wdz/BT/MoE/models/Qwen2.5-14B-Instruct                                 # Qwen2.5-14B-Instruct 基座路径
-  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v1                 # 视觉天气 LoRA 输出目录
+  --output-dir /home/wdz/BT/MoE/lora-moe/outputs/vision_weather_lora_qv_v3                 # 视觉天气 LoRA 输出目录
   --split-root /home/wdz/BT/Stage1/vision_weather/data/split                                # 默认批量推理的数据集 split 根目录
-  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights//home/wdz/BT/Stage1/vision_weather/weights/20260623_133102_weather_cls_rain_station_balanced_100ep_best_model.pt # 冻结视觉分类器权重
+  --vision-weights /home/wdz/BT/Stage1/vision_weather/weights/20260623_133102_weather_cls_rain_station_balanced_100ep_best_model.pt # 冻结视觉分类器权重
   --device-map auto                                                                         # Qwen 多卡切分方式
   --dtype bfloat16                                                                          # Qwen 权重精度
   --split test                                                                              # 默认从 train/val/test 哪个 split 抽样

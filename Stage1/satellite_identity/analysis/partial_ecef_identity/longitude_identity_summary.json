@@ -1,0 +1,25 @@
+{
+  "source": {
+    "rows_scanned": 4859535,
+    "not_partial_two_axis_ecef": 2685805,
+    "partial_rows": 2173730,
+    "partial_identities": 528
+  },
+  "scored_identities": 520,
+  "accepted_calibration_identities": 268,
+  "accepted_top1_correct": 3,
+  "accepted_top1_accuracy": 0.011194029850746268,
+  "correct_best_residual": {
+    "median": 37.62323233520415,
+    "p90": 39.30319556797636,
+    "max": 39.72318637616941
+  },
+  "correct_margin": {
+    "median": 0.14981212282940248,
+    "p10": 0.11345228886023903
+  },
+  "nonaccepted_candidates": 252,
+  "score_mode": "longitude",
+  "residual_unit": "degree",
+  "policy": "Calibration only. No database or canonical mapping is modified by this script."
+}

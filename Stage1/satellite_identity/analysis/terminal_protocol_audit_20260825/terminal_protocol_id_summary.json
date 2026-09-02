@@ -1,0 +1,62 @@
+{
+  "protocol_formula_new_terminals": "trackNo * 256 + phaseNo",
+  "canonicalization": "same LET-version mapping as terminal 001",
+  "source": {
+    "001": {
+      "minute_id_rows": 120645,
+      "protocol_ids": 244,
+      "start": "2026-04-08T17:04:41.050808",
+      "end": "2026-08-24T09:44:00.054835"
+    },
+    "002": {
+      "minute_id_rows": 19404,
+      "protocol_ids": 204,
+      "start": "2026-06-16T11:22:02.965316",
+      "end": "2026-08-24T16:50:00.536115"
+    },
+    "003": {
+      "minute_id_rows": 8961,
+      "protocol_ids": 154,
+      "start": "2026-06-16T11:21:22.210472",
+      "end": "2026-07-07T14:52:46.623444"
+    }
+  },
+  "pairs": {
+    "001_002": {
+      "overlapping_minutes": 11412,
+      "minutes_with_at_least_one_shared_id": 5394,
+      "minutes_with_at_least_one_shared_id_ratio": 0.4726603575184017,
+      "shared_minute_id_pairs": 5506,
+      "mean_minute_id_jaccard": 0.4037174736701551,
+      "left_mean_ids_per_minute": 1.3466526463371888,
+      "right_mean_ids_per_minute": 1.0661584297230986
+    },
+    "001_003": {
+      "overlapping_minutes": 6342,
+      "minutes_with_at_least_one_shared_id": 2693,
+      "minutes_with_at_least_one_shared_id_ratio": 0.42462945443077893,
+      "shared_minute_id_pairs": 2736,
+      "mean_minute_id_jaccard": 0.37109594389632233,
+      "left_mean_ids_per_minute": 1.302585935036266,
+      "right_mean_ids_per_minute": 1.0580258593503626
+    },
+    "002_003": {
+      "overlapping_minutes": 8110,
+      "minutes_with_at_least_one_shared_id": 8060,
+      "minutes_with_at_least_one_shared_id_ratio": 0.9938347718865598,
+      "shared_minute_id_pairs": 8415,
+      "mean_minute_id_jaccard": 0.9734073160706946,
+      "left_mean_ids_per_minute": 1.0701602959309495,
+      "right_mean_ids_per_minute": 1.0591861898890258
+    }
+  },
+  "physical_status_counts": {
+    "accepted": 116,
+    "provisional": 88,
+    "outside_latest_let_or_unresolved": 38,
+    "unresolved": 2
+  },
+  "accepted_physical_ids_observed": 116,
+  "accepted_cross_id_remaps": 0,
+  "cross_id_policy": "Temporal co-occurrence is diagnostic only; no unequal protocol IDs are merged without orbit or ECEF identity evidence."
+}

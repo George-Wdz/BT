@@ -1,0 +1,17 @@
+{
+  "receiver": {
+    "latitude_deg": 31.218500005164763,
+    "longitude_deg": 121.41600000347728,
+    "altitude_m": 72.80906921920669,
+    "samples": 2458205
+  },
+  "scored_identities": 546,
+  "ecef_calibration_identities": 230,
+  "expected_visible_at_all_pass_centers": 210,
+  "expected_visible_fraction": 0.9130434782608695,
+  "top1_correct": 215,
+  "top1_accuracy": 0.9347826086956522,
+  "strong_nonaccepted_candidates": 83,
+  "strong_candidates_without_same_version_collision": 81,
+  "policy": "Calibration only; no database or mapping is modified."
+}

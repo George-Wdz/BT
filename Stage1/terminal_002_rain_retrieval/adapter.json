@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "method": "zscore_domain_alignment",
+  "terminal_id": "01-31-0005-0002",
+  "source_columns": [
+    "carrRssi",
+    "chanRssi",
+    "snr",
+    "snr"
+  ],
+  "source_mean": [
+    -45.976201823296165,
+    -45.082449613356594,
+    9.081525604562895,
+    9.081525604562895
+  ],
+  "source_scale": [
+    3.216229818885676,
+    3.0928903679982835,
+    3.3381916710626625,
+    3.3381916710626625
+  ],
+  "clip_z": 5.0,
+  "calibration_rows": 65047,
+  "generated_at": "2026-08-24T18:04:08",
+  "note": "No rainfall labels are used. Native standardized variations are mapped to the legacy checkpoint feature mean and scale."
+}

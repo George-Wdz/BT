@@ -1,0 +1,13 @@
+# Stage1 minute rainfall retrieval and the 8041 dashboard.
+# Python 3.10 or 3.11 is supported by the current implementation.
+numpy>=1.25,<3
+pandas>=2.0,<3
+PyYAML>=6.0,<7
+Pillow>=9.4,<12
+torch>=2.0,<3
+torchvision>=0.15,<1
+fastapi>=0.99,<1
+pydantic>=1.10,<2
+uvicorn[standard]>=0.23,<1
+openpyxl>=3.1,<4
+pytest>=7,<9

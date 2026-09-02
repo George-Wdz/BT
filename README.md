@@ -2,63 +2,26 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-This repository contains project-specific code and documentation for rainfall retrieval and forecasting from LEO satellite-link observations, ground weather data, camera-derived weather cues, and time-series forecasting models.
+This repository contains LEO satellite-link rainfall retrieval, visual weather classification, link reliability analysis, and forecasting experiments. The active Stage1 deliverable is **minute-level rainfall retrieval**: observations in the minute preceding a rain-gauge anchor are mapped to one accumulated rainfall estimate and one rain probability.
 
-The repository is a lightweight code backup. Raw data, database snapshots, large model weights, checkpoints, logs, and third-party reproduced repositories are kept outside this GitHub repository. The current lightweight Stage1 vision-weather classifier weight is included as a small reproducibility artifact.
+The legacy pass-level Stage1 retrieval has been removed. `Stage1.5`, `Stage2`, and other MoE code are separate experiments and are not required by the current minute-level service.
 
-## Project Structure
+## Quick Check
 
-| Path | Role |
-| --- | --- |
-| `Stage1/` | Stage1 components: `vision_weather/` for camera-image weather classification and `rain_retrieval/` for pass-level rainfall retrieval. |
-| `Stage1.5/` | Bridge from irregular pass-level retrievals to regular Stage2 weather tables. |
-| `MoE/lora-moe/` | Project-specific LoRA/soft-token prototype for visual weather adaptation. |
-| `docs/` | Methodology draft and rendered architecture figures. |
-| `THIRD_PARTY.md` | Third-party dependency notes and upstream links. |
-
-## Pipeline
-
-```text
-SQLite sensor database
-  -> Stage1: satellite pass rainfall retrieval
-  -> Stage1.5: pass outputs aggregated to regular time buckets
-  -> Stage2: rainfall forecasting with GPT4TS-style time-series models
+```bash
+cd /home/wdz/BT/Stage1/minute_rain_retrieval
+python check_delivery.py --training-only
+python -m pytest -q
+bash scripts/run_reproducible_smoke_test.sh
 ```
 
-Main target definitions:
+Start the dashboard service with:
 
-- Stage1: `pass_rainfall_mm = rainfall_cumulative(pass_end) - rainfall_cumulative(pass_start)`
-- Stage1.5/Stage2: fixed-window rainfall, e.g. `rain_10min_mm = rainfall_cumulative(t) - rainfall_cumulative(t - 10min)`
+```bash
+cd /home/wdz/BT/MoE/lora-moe
+PYTHON=/path/to/python bash scripts/serve_three_terminal_minute_rain_demo.sh
+```
 
-Instantaneous `rainfall` is used as diagnostic or auxiliary information, not as the primary accumulated-rainfall target.
+See the [Chinese Stage1 handoff guide](Stage1/README_CN.md) for the verified environment, required local artifacts, input schema, outputs, architecture, tests, limitations, and demo sequence.
 
-## Third-Party Code
-
-The following reproduced third-party repositories are used locally but are not vendored into this GitHub repository:
-
-| Local role | Upstream GitHub |
-| --- | --- |
-| GPT4TS / One Fits All time-series forecasting backend | https://github.com/DAMO-DI-ML/NeurIPS2023-One-Fits-All |
-| LLaMA-MoE reference and serving experiments | https://github.com/pjlab-sys4nlp/llama-moe |
-
-Keep the original licenses, citations, and installation instructions from each upstream project. See [THIRD_PARTY.md](THIRD_PARTY.md).
-
-## Data and Artifacts
-
-The following content is generally not included in this repository:
-
-- SQLite databases and backups
-- raw camera images
-- generated CSV/NPZ datasets
-- model weights and checkpoints, except the current lightweight `Stage1/vision_weather` default classifier weight
-- logs and local caches
-- downloaded third-party repositories
-
-Shareable datasets and model artifacts can be released separately, for example through private Hugging Face Dataset/Model repositories or institutional object storage.
-
-## Documentation
-
-- [Stage1 README](Stage1/README.md) / [中文](Stage1/README_CN.md)
-- [Stage1.5 README](Stage1.5/README.md) / [中文](Stage1.5/README_CN.md)
-- [Stage2 README](Stage2/README.md) / [中文](Stage2/README_CN.md)
-- [Methodology draft](docs/methodology.md)
+Git includes a fixed NPZ dataset, train/validation/test audit splits, and image-classification labels, so a clone can train and evaluate immediately. Raw SQLite databases, camera images, deployed weights, and history databases are not stored in Git; these local artifacts are still required for online serving.

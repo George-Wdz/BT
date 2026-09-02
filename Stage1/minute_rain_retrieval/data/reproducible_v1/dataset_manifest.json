@@ -1,0 +1,26 @@
+{
+  "dataset_version": "minute_rainfall_v1_20260825_minphy3_stratified_seed42",
+  "sample_unit": "one gauge-anchored preceding-minute window",
+  "target": "weather_station.rainfall * 0.1, mm per minute window",
+  "window_semantics": "(anchor_time - 60 s, anchor_time]",
+  "terminal_id": "01-31-0005-0001",
+  "position_alignment": "same satellite ID plus nearest timestamp within 5 seconds",
+  "weather_tolerance_seconds": 5.0,
+  "image_tolerance_seconds": 600.0,
+  "minimum_phy_points": 3,
+  "split_strategy": "stratified_all",
+  "split_seed": 42,
+  "samples": 26409,
+  "rainy_samples": 1256,
+  "split_counts": {"train": 18486, "val": 3961, "test": 3962},
+  "rainy_split_counts": {"train": 879, "val": 188, "test": 189},
+  "base_feature_dim": 16,
+  "model_input_dim_after_train_only_dry_delta": 20,
+  "sha256": {
+    "minute_rainfall_full.npz": "e8e33814ca0372ba29ecaf3799773527d63ba89b7a948bd1cf4ff5ca68d4e158",
+    "train/minute_rainfall_train.npz": "1c0b9585253ea0075406fdfeac15f40a137ce9307024201f4b12d578ed08558d",
+    "val/minute_rainfall_val.npz": "01e9b55874053a7538dbcc682c95d7c5c26c8ecb838b0da0b57558159dad5529",
+    "test/minute_rainfall_test.npz": "c8490f09cdb9bfcdb3f70d512190ea819e27843ffad83ce0e2ca62e5482bc25c",
+    "camera_weather_labels.csv": "26610a667bb0e915610a4579af5cd1173e8cf5ceb3ebb9d0fc5fb2745546f481"
+  }
+}

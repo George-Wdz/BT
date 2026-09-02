@@ -2,63 +2,50 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-本仓库保存星地链路降雨反演与预测相关的项目代码、配置和文档。项目使用 LEO 卫星链路观测、地面气象数据、相机天气信息和时序预测模型，构建从“过境级降雨反演”到“规则时间序列预测”的处理流程。
+本仓库包含LEO卫星链路降雨反演、视觉天气分类、链路可靠性分析和时序预测实验。当前可直接运行和交付的Stage1主流程是**一分钟降雨反演**：使用雨量计锚点前一分钟内的卫星链路、星地几何、地面温湿度气压和天空图像天气概率，输出该分钟累计降雨量及降雨概率。
 
-本仓库是轻量代码备份。原始数据、数据库快照、大模型权重、checkpoint、日志、本地缓存和第三方复现仓库暂不纳入本 GitHub 仓库。当前轻量 Stage1 视觉天气分类器默认权重作为小型复现产物已纳入仓库。
+旧的卫星过境级Stage1反演已经移除。`Stage1.5`、`Stage2`和MoE中的其他代码是独立实验模块，不是当前分钟反演服务的必经步骤。
 
-## 项目结构
+## 当前交付入口
 
-| 路径 | 作用 |
-| --- | --- |
-| `Stage1/` | Stage1 组件：`vision_weather/` 为相机图像天气分类，`rain_retrieval/` 为 pass 级降雨反演。 |
-| `Stage1.5/` | 将不规则 pass 级结果聚合到规则时间表。 |
-| `MoE/lora-moe/` | 项目自有的视觉天气 LoRA / soft-token 原型。 |
-| `docs/` | Methodology 草稿和架构图。 |
-| `THIRD_PARTY.md` | 第三方依赖说明和上游链接。 |
-
-## 流水线
-
-```text
-SQLite sensor database
-  -> Stage1: satellite pass rainfall retrieval
-  -> Stage1.5: pass outputs aggregated to regular time buckets
-  -> Stage2: rainfall forecasting with GPT4TS-style time-series models
+```bash
+cd /home/wdz/BT/Stage1/minute_rain_retrieval
+python check_delivery.py --db-path /home/wdz/satellite_data/satellite_data.db
+python -m pytest -q
 ```
 
-主要目标定义：
+启动8041在线服务：
 
-- Stage1：`pass_rainfall_mm = rainfall_cumulative(pass_end) - rainfall_cumulative(pass_start)`
-- Stage1.5 / Stage2：固定窗口累计降雨，例如 `rain_10min_mm = rainfall_cumulative(t) - rainfall_cumulative(t - 10min)`
+```bash
+cd /home/wdz/BT/MoE/lora-moe
+PYTHON=/path/to/python bash scripts/serve_three_terminal_minute_rain_demo.sh
+```
 
-瞬时 `rainfall` 用作诊断或辅助信息，不作为主要累计降雨目标。
+完整安装、输入、输出和运行说明见 [Stage1中文README](Stage1/README_CN.md)。
 
-## 第三方代码
+## 目录
 
-以下第三方复现仓库在本地使用，但不直接纳入本 GitHub 仓库：
+| 路径 | 作用 |
+|---|---|
+| `Stage1/minute_rain_retrieval/` | 当前分钟降雨数据构建、Transformer训练、归档、测试和在线服务 |
+| `Stage1/vision_weather/` | 天空图像天气分类和在线标签生成 |
+| `Stage1/rainfall_dashboard/` | FastAPI/ECharts页面和链路可靠性展示 |
+| `Stage1/satellite_identity/` | 终端星历ID和物理卫星身份分析 |
+| `Stage1/link_reliability_analysis/` | 原始链路质量和长期趋势分析 |
+| `Stage1.5/` | 历史桥接实验，不属于当前分钟反演主流程 |
+| `Stage2/` | 时序预测实验和第三方GPT4TS复现 |
+| `MoE/lora-moe/` | 视觉LoRA原型、共享历史库代码和分钟服务启动入口 |
+| `THIRD_PARTY.md` | 第三方来源、许可证和引用说明 |
 
-| 本地用途 | 上游 GitHub |
-| --- | --- |
-| GPT4TS / One Fits All 时序预测后端 | https://github.com/DAMO-DI-ML/NeurIPS2023-One-Fits-All |
-| LLaMA-MoE 参考代码和服务实验 | https://github.com/pjlab-sys4nlp/llama-moe |
+## 数据与权重
 
-使用时应保留上游项目的许可证、引用和安装说明。更多说明见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+Git仓库包含一分钟反演的固定NPZ训练集、验证集、测试集及图像分类标签，克隆后可以直接训练和评估。原始SQLite、相机照片、分钟模型权重和历史结果库不提交Git；启动完整8041在线服务仍需按Stage1 README准备这些本地制品。
 
-## 数据与产物
+## 交付文档
 
-以下内容通常不纳入本仓库：
-
-- SQLite 数据库和备份
-- 原始相机图像
-- 生成的 CSV / NPZ 数据集
-- 模型权重和 checkpoint，但当前轻量 `Stage1/vision_weather` 默认分类权重作为例外已纳入仓库
-- 日志和本地缓存
-- 下载或复现的第三方完整仓库
-
-可共享的数据集和模型产物后续可单独发布，例如存放在私有 Hugging Face Dataset / Model 仓库或单位对象存储中。
-
-## 文档
-
-- [Stage1 README](Stage1/README.md) / [中文](Stage1/README_CN.md)
-- [Stage1.5 README](Stage1.5/README.md) / [中文](Stage1.5/README_CN.md)
-- [Stage2 README](Stage2/README.md) / [中文](Stage2/README_CN.md)
-- [Methodology draft](docs/methodology.md)
+- [Stage1运行说明](Stage1/README_CN.md)
+- [分钟项目详细README](Stage1/minute_rain_retrieval/README_CN.md)
+- [设计说明](Stage1/minute_rain_retrieval/docs/DESIGN_CN.md)
+- [测试说明](Stage1/minute_rain_retrieval/docs/TESTING_CN.md)
+- [风险与限制](Stage1/minute_rain_retrieval/docs/RISKS_CN.md)
+- [3～5分钟Demo](Stage1/minute_rain_retrieval/docs/DEMO_CN.md)

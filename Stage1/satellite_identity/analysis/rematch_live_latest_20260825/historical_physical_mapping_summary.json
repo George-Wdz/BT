@@ -1,0 +1,41 @@
+{
+  "policy": "No source ID is overwritten; only multi-evidence rows are accepted.",
+  "status_counts": {
+    "unresolved": 169,
+    "accepted": 221,
+    "provisional": 161
+  },
+  "version_status_counts": {
+    "0401": {
+      "unresolved": 82,
+      "accepted": 3
+    },
+    "0429": {
+      "unresolved": 78,
+      "accepted": 3,
+      "provisional": 18
+    },
+    "0611": {
+      "provisional": 60,
+      "accepted": 91,
+      "unresolved": 5
+    },
+    "0727": {
+      "accepted": 124,
+      "provisional": 83,
+      "unresolved": 4
+    }
+  },
+  "accepted_unique_norad_ids": 128,
+  "same_version_collision_groups_downgraded": 0,
+  "accepted_canonical_rows": 213,
+  "receiver": {
+    "terminal_id": "01-31-0005-0001",
+    "latitude_deg": 31.218500002698626,
+    "longitude_deg": 121.4160000054316,
+    "altitude_m": 72.73116084014937,
+    "database_samples": 5093380
+  },
+  "mapping_path": "/home/wdz/BT/Stage1/satellite_identity/analysis/rematch_live_latest_20260825/historical_physical_mapping.csv",
+  "accepted_canonical_mapping_path": "/home/wdz/BT/Stage1/satellite_identity/analysis/rematch_live_latest_20260825/accepted_canonical_0727_mapping.csv"
+}

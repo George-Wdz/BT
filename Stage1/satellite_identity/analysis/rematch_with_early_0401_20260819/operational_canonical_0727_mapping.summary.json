@@ -1,0 +1,18 @@
+{
+  "physical_mapping": "/home/wdz/BT/Stage1/satellite_identity/analysis/rematch_with_early_0401_20260819/historical_physical_mapping.csv",
+  "base_mapping": "/home/wdz/BT/Stage1/satellite_identity/analysis/latest/operational_canonical_0727_mapping.csv",
+  "output_mapping": "/home/wdz/BT/Stage1/satellite_identity/analysis/rematch_with_early_0401_20260819/operational_canonical_0727_mapping.csv",
+  "rows": 370,
+  "changed_rows": 144,
+  "policy_counts": {
+    "strict_multi_evidence": 350,
+    "retained_previous:retained_previous:authorized_same_numeric_id_continuity_with_let_orbit": 1,
+    "retained_previous:retained_previous:strict_multi_evidence": 19
+  },
+  "version_counts": {
+    "0401": 71,
+    "0429": 73,
+    "0611": 91,
+    "0727": 135
+  }
+}

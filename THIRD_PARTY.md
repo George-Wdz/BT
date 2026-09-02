@@ -1,9 +1,12 @@
 # Third-Party Components
 
-This repository contains project-specific code and documentation. The following third-party repositories are used locally as reproduced research code or runtime dependencies, but are intentionally excluded from this GitHub repository.
+This repository contains project-specific code and documentation. The following
+third-party components are either vendored for the frontend or used locally as
+research/runtime dependencies.
 
-| Local path | Upstream GitHub | Role in this project |
+| Local path | Upstream | Role in this project |
 | --- | --- | --- |
+| `Stage1/multi_terminal_rain_demo/static/echarts.min.js` | https://echarts.apache.org/ | Vendored Apache ECharts 5.6.0 browser bundle (Apache-2.0). |
 | `Stage2/GPT4TS/` | https://github.com/DAMO-DI-ML/NeurIPS2023-One-Fits-All | Stage2 long-term time-series forecasting backend. |
 | `MoE/llama-moe/` | https://github.com/pjlab-sys4nlp/llama-moe | Local MoE reference code and serving experiments. |
 
