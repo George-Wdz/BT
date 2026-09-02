@@ -84,14 +84,6 @@ python train.py \
   --selection-metric balanced_mae
 ```
 
-快速验证完整的加载、训练、保存和评估链路：
-
-```bash
-bash scripts/run_reproducible_smoke_test.sh
-```
-
-它只训练1个epoch，输出到`outputs/smoke_test/`，不会修改部署权重或8041历史库。
-
 从本地采集SQLite重新构建数据时，编辑`scripts/run_minute_rain_workflow.sh`中的路径和参数后执行：
 
 ```bash
@@ -136,7 +128,9 @@ outputs/training_runs/<run_id>/
 
 规范数据版本包含26,409个分钟样本，其中1,256个有雨样本；固定划分为18,486/3,961/3,962。完整数据、`SNR >= -10 dB`强链路视图和`SNR >= -25 dB`雨天鲁棒视图均位于`data/archive`。
 
-## 启动在线服务
+## 本地在线服务
+
+该部分仅面向持续接收终端数据的本地服务器，不是同事离线复现的必要步骤。Git不包含在线服务需要的实时SQLite、照片和部署权重。
 
 先修改`MoE/lora-moe/scripts/serve_three_terminal_minute_rain_demo.sh`中的数据库、权重、相机和备份路径，然后：
 
@@ -179,5 +173,4 @@ python -m pytest -q
 - [风险与限制](docs/RISKS_CN.md)
 - [3～5分钟Demo](docs/DEMO_CN.md)
 - [8041权重部署与回滚](docs/DEPLOYMENT_CN.md)
-- [实际Smoke Test记录](docs/SMOKE_TEST_RESULT_CN.md)
 - [SNR质量审查](analysis/snr_quality_review_20260902.md)

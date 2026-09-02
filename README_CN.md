@@ -10,16 +10,11 @@
 
 ```bash
 cd /home/wdz/BT/Stage1/minute_rain_retrieval
-python check_delivery.py --db-path /home/wdz/satellite_data/satellite_data.db
+python check_delivery.py --training-only
 python -m pytest -q
 ```
 
-启动8041在线服务：
-
-```bash
-cd /home/wdz/BT/MoE/lora-moe
-PYTHON=/path/to/python bash scripts/serve_three_terminal_minute_rain_demo.sh
-```
+上述入口只依赖Git内置数据。8041在线服务依赖本地持续回传数据，不属于同事离线复现流程。
 
 完整安装、输入、输出和运行说明见 [Stage1中文README](Stage1/README_CN.md)。
 

@@ -8,13 +8,9 @@ Stage1是一个多源LEO卫星链路分钟降雨反演原型。系统将雨量�
 cd /home/wdz/BT/Stage1/minute_rain_retrieval
 python check_delivery.py --training-only
 python -m pytest -q
-
-cd /home/wdz/BT/MoE/lora-moe
-PYTHON=/path/to/venv/bin/python bash scripts/serve_three_terminal_minute_rain_demo.sh
-curl -fsS http://127.0.0.1:8041/health
 ```
 
-浏览器打开 `http://<服务器IP>:8041`。如果服务已经常驻运行，不要重复启动占用8041端口。
+同事接手的默认范围是固定数据上的离线训练、验证和测试。8041依赖持续回传的本地数据库、照片和部署权重，仅用于数据服务器本地运行，不属于克隆后的复现要求。
 
 ## 安装
 
@@ -61,10 +57,16 @@ bash scripts/run_minute_rain_workflow.sh
 - `data/training_runs/<run_id>/`：完整NPZ、独立train/val/test、索引、摘要和manifest；
 - `outputs/training_runs/<run_id>/`：`best.pt`、`metrics.json`、三套预测CSV和有雨样本CSV。
 
-使用Git内置数据直接检查完整训练和评估链路：
+使用Git内置数据直接训练和评估：
 
 ```bash
-bash scripts/run_reproducible_smoke_test.sh
+python train.py \
+  --dataset-path data/reproducible_v1/minute_rainfall_full.npz \
+  --output-dir outputs/reproduction \
+  --epochs 80 \
+  --batch-size 64 \
+  --max-train-dry-ratio 3 \
+  --selection-metric balanced_mae
 ```
 
 完整输入契约、参数和输出说明见 [分钟项目README](minute_rain_retrieval/README_CN.md)。

@@ -12,7 +12,6 @@ The legacy pass-level Stage1 retrieval has been removed. `Stage1.5`, `Stage2`, a
 cd /home/wdz/BT/Stage1/minute_rain_retrieval
 python check_delivery.py --training-only
 python -m pytest -q
-bash scripts/run_reproducible_smoke_test.sh
 ```
 
 Start the dashboard service with:

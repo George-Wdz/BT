@@ -22,14 +22,6 @@ cd /home/wdz/BT/Stage1/minute_rain_retrieval
 python -m pytest -q
 ```
 
-克隆仓库后的端到端smoke test会读取仓库内置数据，完成1个epoch训练、保存最佳权重，并导出train/val/test预测：
-
-```bash
-bash scripts/run_reproducible_smoke_test.sh
-```
-
-输出位于`outputs/smoke_test/`，控制台记录另存为`outputs/smoke_test.console.txt`。该命令不启动服务、不写SQLite，也不替换部署权重。
-
 运行交付前检查：
 
 ```bash
@@ -48,7 +40,7 @@ python check_delivery.py --training-only
 python check_delivery.py --code-only
 ```
 
-服务启动后的最小检查：
+以下在线检查仅供持续接收数据的本地服务器使用，不属于同事离线验收要求：
 
 ```bash
 curl -fsS http://127.0.0.1:8041/health
