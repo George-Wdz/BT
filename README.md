@@ -6,21 +6,18 @@ This repository contains LEO satellite-link rainfall retrieval, visual weather c
 
 The legacy pass-level Stage1 retrieval has been removed. `Stage1.5`, `Stage2`, and other MoE code are separate experiments and are not required by the current minute-level service.
 
-## Quick Check
+## Quick Start
 
 ```bash
-cd /home/wdz/BT/Stage1/minute_rain_retrieval
+git clone https://github.com/George-Wdz/BT.git
+cd BT
+python -m pip install -r Stage1/requirements.txt
+
+cd Stage1/minute_rain_retrieval
 python check_delivery.py --training-only
 python -m pytest -q
 ```
 
-Start the dashboard service with:
+See the [Chinese Stage1 guide](Stage1/README_CN.md) for training commands, input schema, outputs, architecture, tests, limitations, and the demonstration sequence.
 
-```bash
-cd /home/wdz/BT/MoE/lora-moe
-PYTHON=/path/to/python bash scripts/serve_three_terminal_minute_rain_demo.sh
-```
-
-See the [Chinese Stage1 handoff guide](Stage1/README_CN.md) for the verified environment, required local artifacts, input schema, outputs, architecture, tests, limitations, and demo sequence.
-
-Git includes a fixed NPZ dataset, train/validation/test audit splits, and image-classification labels, so a clone can train and evaluate immediately. Raw SQLite databases, camera images, deployed weights, and history databases are not stored in Git; these local artifacts are still required for online serving.
+Git includes a fixed NPZ dataset, exported train/validation/test splits, and image-classification labels, so a clone can train and evaluate immediately. Raw SQLite databases, camera images, deployed weights, and history databases are not stored in Git; these local artifacts are required only for the optional online service.

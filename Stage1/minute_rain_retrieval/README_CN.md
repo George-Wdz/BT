@@ -1,4 +1,4 @@
-# 一分钟降雨反演：运行与交付说明
+# 一分钟降雨反演：使用说明
 
 ## 项目是什么
 
@@ -11,10 +11,10 @@
 - Linux；当前Shell、cron和服务脚本未适配Windows。
 - Python 3.10或3.11。
 - CPU可以构建数据、运行测试和推理；当前8041使用CUDA。
-- 完整交付约需要30 GB可用空间，主要是照片、规范原始库和恢复备份；代码本身远小于该体积。
+- 离线复现实验使用仓库内置数据，不需要原始照片或采集数据库。
 
 ```bash
-cd /home/wdz/BT
+cd BT
 python3.10 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -25,14 +25,29 @@ GPU环境应先安装与驱动/CUDA匹配的PyTorch和torchvision，再安装其
 
 ```bash
 cd Stage1/minute_rain_retrieval
-python check_delivery.py --db-path /home/wdz/satellite_data/satellite_data.db
+python check_delivery.py --training-only
 ```
 
-## 必需输入
+## 输入数据
 
-### 训练数据源
+### 仓库内置数据
 
-默认数据库为`/home/wdz/satellite_data/satellite_data.db`，至少包含：
+仓库包含`data/reproducible_v1/`，克隆后无需采集数据库即可训练和评估：
+
+```text
+minute_rainfall_full.npz       # 训练器实际读取，内部含固定split标记
+train/minute_rainfall_train.*  # 独立导出的训练划分
+val/minute_rainfall_val.*      # 独立导出的验证划分
+test/minute_rainfall_test.*    # 独立导出的测试划分
+camera_weather_labels.csv      # 本版本使用的图像分类标签，不含原始图像
+dataset_manifest.json          # 数据版本、来源和划分说明
+```
+
+完整NPZ与三个独立划分来自同一个固定`stratified_all/seed=42`版本。训练器需要完整NPZ；单独的划分文件不能替代它。
+
+### 可选原始数据源
+
+重新构建数据集时，需要一个至少包含以下字段的SQLite数据库：
 
 | 表 | 实际使用字段 |
 |---|---|
@@ -43,24 +58,9 @@ python check_delivery.py --db-path /home/wdz/satellite_data/satellite_data.db
 
 002/003在线读取还使用`phy_bb_data`和`phy_rssi_data`。位置必须与PHY具有相同卫星ID，并在默认5秒容差内最近邻匹配。视觉CSV至少包含`timestamp`、`prob_sunny`、`prob_cloudy`和`prob_rain`。
 
-### Git内置可复现数据
+### 可选在线服务的本地制品
 
-仓库包含`data/reproducible_v1/`，克隆后无需采集数据库即可训练和评估：
-
-```text
-minute_rainfall_full.npz       # 训练器实际读取，内部含固定split标记
-train/minute_rainfall_train.*  # 训练划分审计副本
-val/minute_rainfall_val.*      # 验证划分审计副本
-test/minute_rainfall_test.*    # 测试划分审计副本
-camera_weather_labels.csv      # 本版本使用的图像分类标签，不含原始图像
-dataset_manifest.json          # 数据版本、来源和划分说明
-```
-
-完整NPZ与三个审计副本来自同一个固定`stratified_all/seed=42`版本。训练器需要完整NPZ；单独的划分文件不能替代它。
-
-### 不在Git中的在线运行制品
-
-完整服务需随交付包提供：
+运行在线服务需要自行准备：
 
 - `weights/deployed/{position_model,no_position_fallback,new_terminal_transfer}/best.pt`；
 - `../vision_weather/weights/20260623_133102_weather_cls_rain_station_balanced_100ep_best_model.pt`；
@@ -87,7 +87,7 @@ python train.py \
 从本地采集SQLite重新构建数据时，编辑`scripts/run_minute_rain_workflow.sh`中的路径和参数后执行：
 
 ```bash
-cd /home/wdz/BT/Stage1/minute_rain_retrieval
+cd Stage1/minute_rain_retrieval
 bash scripts/run_minute_rain_workflow.sh
 ```
 
@@ -126,17 +126,17 @@ outputs/training_runs/<run_id>/
   val_test_rainy_predictions.csv
 ```
 
-规范数据版本包含26,409个分钟样本，其中1,256个有雨样本；固定划分为18,486/3,961/3,962。完整数据、`SNR >= -10 dB`强链路视图和`SNR >= -25 dB`雨天鲁棒视图均位于`data/archive`。
+仓库数据版本包含26,409个分钟样本，其中1,256个有雨样本；固定划分为18,486/3,961/3,962。本地规范归档还可包含`SNR >= -10 dB`强链路视图和`SNR >= -25 dB`雨天鲁棒视图，但这些派生数据不属于Git内置复现数据。
 
 ## 本地在线服务
 
-该部分仅面向持续接收终端数据的本地服务器，不是同事离线复现的必要步骤。Git不包含在线服务需要的实时SQLite、照片和部署权重。
+该部分适用于能够持续接收终端数据的本地部署。Git不包含在线服务需要的实时SQLite、照片和部署权重，因此在线服务不是离线复现实验的必要步骤。
 
 先修改`MoE/lora-moe/scripts/serve_three_terminal_minute_rain_demo.sh`中的数据库、权重、相机和备份路径，然后：
 
 ```bash
-cd /home/wdz/BT/MoE/lora-moe
-PYTHON=/home/wdz/BT/.venv/bin/python \
+cd <repo-root>/MoE/lora-moe
+PYTHON=<repo-root>/.venv/bin/python \
   bash scripts/serve_three_terminal_minute_rain_demo.sh
 ```
 
@@ -161,11 +161,11 @@ GET /api/history/stats
 ## 测试
 
 ```bash
-cd /home/wdz/BT/Stage1/minute_rain_retrieval
+cd <repo-root>/Stage1/minute_rain_retrieval
 python -m pytest -q
 ```
 
-当前结果为`7 passed`。详细覆盖范围、服务检查和未覆盖项见 [测试说明](docs/TESTING_CN.md)。
+当前结果为`8 passed`。详细覆盖范围、服务检查和未覆盖项见 [测试说明](docs/TESTING_CN.md)。
 
 ## 进一步阅读
 

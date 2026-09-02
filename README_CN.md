@@ -2,21 +2,25 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-本仓库包含LEO卫星链路降雨反演、视觉天气分类、链路可靠性分析和时序预测实验。当前可直接运行和交付的Stage1主流程是**一分钟降雨反演**：使用雨量计锚点前一分钟内的卫星链路、星地几何、地面温湿度气压和天空图像天气概率，输出该分钟累计降雨量及降雨概率。
+本仓库包含LEO卫星链路降雨反演、视觉天气分类、链路可靠性分析和时序预测实验。Stage1的主要实现是**一分钟降雨反演**：使用雨量计锚点前一分钟内的卫星链路、星地几何、地面温湿度气压和天空图像天气概率，估计该分钟累计降雨量及降雨概率。
 
 旧的卫星过境级Stage1反演已经移除。`Stage1.5`、`Stage2`和MoE中的其他代码是独立实验模块，不是当前分钟反演服务的必经步骤。
 
-## 当前交付入口
+## 快速开始
 
 ```bash
-cd /home/wdz/BT/Stage1/minute_rain_retrieval
+git clone https://github.com/George-Wdz/BT.git
+cd BT
+python -m pip install -r Stage1/requirements.txt
+
+cd Stage1/minute_rain_retrieval
 python check_delivery.py --training-only
 python -m pytest -q
 ```
 
-上述入口只依赖Git内置数据。8041在线服务依赖本地持续回传数据，不属于同事离线复现流程。
+仓库包含固定的数据划分和视觉分类标签，因此上述检查不依赖原始采集数据库。训练命令、输出格式和数据说明见 [Stage1中文README](Stage1/README_CN.md)。
 
-完整安装、输入、输出和运行说明见 [Stage1中文README](Stage1/README_CN.md)。
+在线服务依赖持续更新的采集数据库、相机照片和本地模型权重，不属于默认离线复现流程。
 
 ## 目录
 
@@ -36,7 +40,7 @@ python -m pytest -q
 
 Git仓库包含一分钟反演的固定NPZ训练集、验证集、测试集及图像分类标签，克隆后可以直接训练和评估。原始SQLite、相机照片、分钟模型权重和历史结果库不提交Git；启动完整8041在线服务仍需按Stage1 README准备这些本地制品。
 
-## 交付文档
+## 文档
 
 - [Stage1运行说明](Stage1/README_CN.md)
 - [分钟项目详细README](Stage1/minute_rain_retrieval/README_CN.md)
