@@ -2,6 +2,7 @@
 # Python 3.10 or 3.11 is supported by the current implementation.
 numpy>=1.25,<3
 pandas>=2.0,<3
+scikit-learn>=1.3,<2
 PyYAML>=6.0,<7
 Pillow>=9.4,<12
 torch>=2.0,<3

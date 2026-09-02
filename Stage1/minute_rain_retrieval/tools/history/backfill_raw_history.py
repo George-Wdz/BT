@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from service import MinuteThreeTerminalRunner
 
@@ -83,7 +87,7 @@ def main() -> None:
         poll_interval_s=0,
         worker_lookback_hours=24,
         worker_max_samples=256,
-        link_analysis_dir=Path(__file__).resolve().parents[1]
+        link_analysis_dir=PROJECT_ROOT.parent
         / "link_reliability_analysis" / "artifacts",
         min_phy_points=args.min_phy_points,
         fallback_min_phy_points=args.min_phy_points,

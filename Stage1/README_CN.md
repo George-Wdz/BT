@@ -81,6 +81,7 @@ bash scripts/run_minute_rain_workflow.sh \
 | 路径 | 内容 |
 |---|---|
 | `minute_rain_retrieval/` | 数据构建、Transformer模型、训练、评估与测试 |
+| `minute_rain_retrieval/tools/` | 消融数据、历史回填、统计分析和结果导出工具 |
 | `minute_rain_retrieval/data/reproducible_v1/` | 固定完整NPZ、独立划分、索引和视觉标签 |
 | `vision_weather/` | 天空图像三分类模型与标签生成 |
 | `rainfall_dashboard/` | FastAPI/ECharts可视化实现 |
